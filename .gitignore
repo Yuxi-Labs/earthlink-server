@@ -1,0 +1,74 @@
+# Python Server Ignores
+
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ML / PyTorch
+*.pt
+*.pth
+*.onnx
+models/
+checkpoints/
+runs/
+tensorboard/
+wandb/
+
+# Ray
+ray_results/
+/tmp/ray/
+
+# ChromaDB
+chroma_data/
+.chroma/
+
+# Docker volumes (local dev)
+data/
+postgres_data/
+redis_data/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
