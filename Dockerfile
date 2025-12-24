@@ -11,14 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv for fast package management
 RUN pip install uv
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy all project files needed for install
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
 
 # Install dependencies
 RUN uv pip install --system -e .
-
-# Copy application code
-COPY src/ ./src/
 
 # Expose port
 EXPOSE 8000

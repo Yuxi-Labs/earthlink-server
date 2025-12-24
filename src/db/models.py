@@ -129,3 +129,50 @@ class InteractionLog(Base):
     # For voice interactions
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class SimulationRun(Base):
+    """Simulation run tracking."""
+
+    __tablename__ = "simulation_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    # Status: pending, running, paused, stopped, completed, failed
+
+    # Configuration
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    # Metrics
+    total_steps: Mapped[int] = mapped_column(default=0)
+    total_agents: Mapped[int] = mapped_column(default=0)
+    total_worlds: Mapped[int] = mapped_column(default=0)
+
+    # Timestamps
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    # Checkpoint info
+    last_checkpoint: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    checkpoint_step: Mapped[int | None] = mapped_column(nullable=True)
+
+
+class MetricSnapshot(Base):
+    """Time-series metrics snapshots."""
+
+    __tablename__ = "metric_snapshots"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    simulation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("simulation_runs.id"), nullable=True
+    )
+    agent_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("agents.id"), nullable=True
+    )
+    metric_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    metric_value: Mapped[float] = mapped_column(Float, nullable=False)
+    step: Mapped[int | None] = mapped_column(nullable=True)
+
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

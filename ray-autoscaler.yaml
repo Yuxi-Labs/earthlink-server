@@ -1,0 +1,74 @@
+# Ray Cluster - Autoscaler Configuration
+
+cluster_name: earthlink-cluster
+
+# Maximum number of workers the cluster will have at any time
+max_workers: 10
+
+# Minimum number of workers to keep running
+upscaling_speed: 1.0
+idle_timeout_minutes: 5
+
+# Provider-specific configuration
+provider:
+    type: local
+    head_ip: 127.0.0.1
+    worker_ips: []
+
+# Ray head node configuration
+head_node_type: head_node
+
+# Available node types
+available_node_types:
+    head_node:
+        resources:
+            CPU: 4
+            GPU: 1
+            memory: 8589934592  # 8GB
+            object_store_memory: 2147483648  # 2GB
+        node_config: {}
+        min_workers: 0
+        max_workers: 0
+
+    worker_node:
+        resources:
+            CPU: 8
+            GPU: 1
+            memory: 17179869184  # 16GB
+            object_store_memory: 4294967296  # 4GB
+        node_config: {}
+        min_workers: 1
+        max_workers: 10
+
+# Commands to run on head node initialization
+head_setup_commands: []
+
+# Commands to run on worker node initialization
+worker_setup_commands: []
+
+# Commands to start Ray on head node
+head_start_ray_commands:
+    - ray stop
+    - >-
+      ray start
+      --head
+      --port=6380
+      --object-manager-port=8076
+      --autoscaling-config=~/ray_bootstrap_config.yaml
+      --dashboard-host=0.0.0.0
+      --dashboard-port=8265
+      --metrics-export-port=8080
+
+# Commands to start Ray on worker nodes
+worker_start_ray_commands:
+    - ray stop
+    - >-
+      ray start
+      --address=$RAY_HEAD_IP:6380
+      --object-manager-port=8076
+
+# Runtime environment for all nodes
+runtime_env:
+    env_vars:
+        EARTHLINK_ENV: "cluster"
+        RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER: "1"

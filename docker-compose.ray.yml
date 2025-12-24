@@ -1,0 +1,82 @@
+# Earthlink Ray Cluster - Docker Compose Extension
+# Extends the main docker-compose.yml with Ray head node service
+
+services:
+  ray-head:
+    image: rayproject/ray:2.40.0-py311-gpu
+    container_name: earthlink-ray-head
+    command: >
+      ray start
+      --head
+      --node-ip-address=ray-head
+      --port=6380
+      --dashboard-host=0.0.0.0
+      --dashboard-port=8265
+      --num-cpus=4
+      --num-gpus=1
+      --memory=8589934592
+      --object-store-memory=2147483648
+      --metrics-export-port=8080
+      --block
+    ports:
+      - "6380:6380"       # Ray client port
+      - "8265:8265"       # Ray dashboard
+      - "8080:8080"       # Metrics export
+      - "10001:10001"     # Object manager
+    environment:
+      - RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
+      - EARTHLINK_ENV=cluster
+    volumes:
+      - ray_data:/tmp/ray
+      - ./src:/app/src
+    networks:
+      - earthlink-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ray", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Example worker node (uncomment and duplicate for multiple workers)
+  # ray-worker-1:
+  #   image: rayproject/ray:2.40.0-py311-gpu
+  #   container_name: earthlink-ray-worker-1
+  #   command: >
+  #     ray start
+  #     --address=ray-head:6380
+  #     --num-cpus=8
+  #     --num-gpus=1
+  #     --memory=17179869184
+  #     --object-store-memory=4294967296
+  #     --block
+  #   environment:
+  #     - RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
+  #   volumes:
+  #     - ray_worker_1_data:/tmp/ray
+  #     - ./src:/app/src
+  #   networks:
+  #     - earthlink-net
+  #   depends_on:
+  #     - ray-head
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
+volumes:
+  ray_data:
+  # ray_worker_1_data:
+
+networks:
+  earthlink-net:
+    external: true

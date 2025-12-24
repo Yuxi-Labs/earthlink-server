@@ -10,18 +10,44 @@ authors = [
 ]
 
 dependencies = [
+    # API
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "websockets>=14.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
+    # Database
     "sqlalchemy>=2.0.36",
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
     "redis>=5.2.0",
+    # HTTP
     "httpx>=0.28.0",
+    # Config
     "python-dotenv>=1.0.1",
     "structlog>=24.4.0",
+    # Agent Concurrency
+    "ray[default]>=2.38.0",
+    # ML / PyTorch
+    "torch>=2.5.0",
+    "numpy>=2.1.0",
+    "scipy>=1.14.0",
+    # RL
+    "stable-baselines3>=2.3.0",
+    "gymnasium>=0.29.0",
+    # Vector Memory
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.3.0",
+    # Knowledge Graph
+    "networkx>=3.4.0",
+    # Geospatial
+    "geopandas>=1.0.0",
+    "shapely>=2.0.0",
+    "fiona>=1.10.0",
+    "psycopg2-binary>=2.9.0",
+    "GeoAlchemy2>=0.15.0",
+    # Search APIs
+    "wikipedia-api>=0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -33,20 +59,19 @@ dev = [
     "mypy>=1.13.0",
     "pre-commit>=4.0.0",
 ]
-ml = [
-    "torch>=2.5.0",
-    "numpy>=2.1.0",
-    "scipy>=1.14.0",
-    "scikit-learn>=1.5.0",
+cuda = [
+    "torch[cuda]>=2.5.0",
 ]
-vector = [
-    "qdrant-client>=1.12.0",
-    "sentence-transformers>=3.3.0",
+neo4j = [
+    "neo4j>=5.26.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.ruff]
 target-version = "py311"

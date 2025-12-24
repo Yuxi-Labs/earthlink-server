@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # External APIs
     wikipedia_api_url: str = "https://en.wikipedia.org/api/rest_v1"
 
+    # Search APIs
+    serper_api_key: str = ""
+    tavily_api_key: str = ""
+
     # Voice APIs
     xai_api_key: str = ""
     openai_api_key: str = ""
@@ -34,8 +38,11 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
-    # Vector Database
-    qdrant_url: str = "http://localhost:6333"
+    # Vector Database (ChromaDB)
+    chromadb_url: str = "http://localhost:8000"
+
+    # Ray
+    ray_address: str = "auto"
 
 
 settings = Settings()
