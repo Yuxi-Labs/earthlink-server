@@ -54,6 +54,7 @@ class EarthWorld(World):
         self.step_size_km = step_size_km
         self.perception_radius_km = perception_radius_km
         self.db_session = db_session
+        self._is_loaded = False  # Track if world resources are loaded
         
         # Conversion: 1 degree ≈ 111 km
         self.lat_step = step_size_km / 111.0

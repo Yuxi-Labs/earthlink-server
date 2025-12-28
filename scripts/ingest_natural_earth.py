@@ -21,30 +21,29 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 # Natural Earth download URLs
-NATURAL_EARTH_BASE = "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download"
 DATASETS = {
     "countries": {
-        "url": f"{NATURAL_EARTH_BASE}/10m/cultural/ne_10m_admin_0_countries.zip",
+        "url": "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_countries.zip",
         "type": "regions",
         "layer": "ne_10m_admin_0_countries"
     },
     "populated_places": {
-        "url": f"{NATURAL_EARTH_BASE}/10m/cultural/ne_10m_populated_places.zip",
+        "url": "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_populated_places.zip",
         "type": "features",
         "layer": "ne_10m_populated_places"
     },
     "lakes": {
-        "url": f"{NATURAL_EARTH_BASE}/10m/physical/ne_10m_lakes.zip",
+        "url": "https://naciscdn.org/naturalearth/10m/physical/ne_10m_lakes.zip",
         "type": "features",
         "layer": "ne_10m_lakes"
     },
     "rivers": {
-        "url": f"{NATURAL_EARTH_BASE}/10m/physical/ne_10m_rivers_lake_centerlines.zip",
+        "url": "https://naciscdn.org/naturalearth/10m/physical/ne_10m_rivers_lake_centerlines.zip",
         "type": "features",
         "layer": "ne_10m_rivers_lake_centerlines"
     },
     "coastline": {
-        "url": f"{NATURAL_EARTH_BASE}/10m/physical/ne_10m_coastline.zip",
+        "url": "https://naciscdn.org/naturalearth/10m/physical/ne_10m_coastline.zip",
         "type": "features",
         "layer": "ne_10m_coastline"
     }

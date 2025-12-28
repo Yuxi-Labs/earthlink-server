@@ -11,6 +11,10 @@ from src.api.routes import router as api_router
 from src.api.websocket import manager as ws_manager
 from src.api.event_bridge import init_event_bridge, EventBridge
 from src.api.messaging import router as messaging_router
+from src.api.geo import router as geo_router
+from src.api.analytics import router as analytics_router
+from src.api.readiness import router as readiness_router
+from src.api.target_worlds import router as target_worlds_router
 from src.agents.core import MessageRouter, init_message_router, get_message_router
 from src.config import settings
 from src.db.database import init_db
@@ -109,8 +113,25 @@ app.add_middleware(
 )
 
 # Include API routes
+from src.api.commands import router as commands_router
+from src.api.episodes import router as episodes_router
+from src.api.snapshots import router as snapshots_router
+from src.api.websocket_commands import router as websocket_commands_router
+from src.api.collaboration import router as collaboration_router
+from src.api.health import router as health_router
+
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(messaging_router, prefix="/api/v1/messaging", tags=["messaging"])
+app.include_router(geo_router, prefix="/geo", tags=["geo"])
+app.include_router(analytics_router, prefix="/api/v1", tags=["analytics"])
+app.include_router(readiness_router, tags=["readiness"])
+app.include_router(target_worlds_router, tags=["target_worlds"])
+app.include_router(commands_router, prefix="/api/v1/commands", tags=["commands"])
+app.include_router(episodes_router, prefix="/api/v1/episodes", tags=["episodes"])
+app.include_router(snapshots_router, prefix="/api/v1/snapshots", tags=["snapshots"])
+app.include_router(websocket_commands_router, prefix="/ws", tags=["websocket-commands"])
+app.include_router(collaboration_router, prefix="/api/v1/collaboration", tags=["collaboration"])
+app.include_router(health_router, tags=["health"])
 
 
 @app.get("/health")

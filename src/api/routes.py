@@ -9,6 +9,7 @@ from src.api.websocket import router as ws_router
 from src.api.metrics import router as metrics_router
 from src.api.social import router as social_router
 from src.api.geo import router as geo_router
+from src.api.earthlink import router as earthlink_router
 
 router = APIRouter()
 
@@ -19,3 +20,4 @@ router.include_router(ws_router, prefix="/ws", tags=["websocket"])
 router.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 router.include_router(social_router, prefix="/social", tags=["social"])
 router.include_router(geo_router, prefix="/geo", tags=["geo"])
+router.include_router(earthlink_router, prefix="/earthlink", tags=["earthlink"])

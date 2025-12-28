@@ -412,3 +412,141 @@ async def websocket_simulation(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         manager.disconnect(client_id)
+
+
+@router.websocket("/agents/{agent_id}/stream")
+async def stream_agent_events(websocket: WebSocket, agent_id: str):
+    """Stream real-time learning events for a specific agent."""
+    from sqlalchemy import text
+    from db.database import async_session_maker
+    from datetime import datetime
+    
+    await websocket.accept()
+    
+    try:
+        await websocket.send_json({
+            "type": "connection_established",
+            "agent_id": agent_id,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        
+        last_event_id = 0
+        
+        while True:
+            try:
+                async with async_session_maker() as db:
+                    query = text("""
+                        SELECT id, agent_id, source, topic, content_summary,
+                                knowledge_count, goal_context, curiosity_signal,
+                                lat, lon, agent_state, created_at
+                        FROM knowledge_acquisition_log
+                        WHERE agent_id = :agent_id AND id > :last_id
+                        ORDER BY created_at DESC LIMIT 10
+                    """)
+                    
+                    result = await db.execute(query, {"agent_id": agent_id, "last_id": last_event_id})
+                    rows = result.fetchall()
+                    
+                    for row in reversed(rows):
+                        await websocket.send_json({
+                            "type": "knowledge_acquisition",
+                            "agent_id": str(row.agent_id),
+                            "event_id": row.id,
+                            "data": {
+                                "source": row.source,
+                                "topic": row.topic,
+                                "summary": row.content_summary,
+                                "knowledge_count": row.knowledge_count,
+                                "goal_context": row.goal_context,
+                                "curiosity_signal": row.curiosity_signal,
+                                "location": {"lat": row.lat, "lon": row.lon} if row.lat and row.lon else None,
+                                "agent_state": row.agent_state,
+                            },
+                            "timestamp": row.created_at.isoformat(),
+                        })
+                        last_event_id = max(last_event_id, row.id)
+                
+                await asyncio.sleep(0.5)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                await websocket.send_json({
+                    "type": "error",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+                await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
+
+
+@router.websocket("/analytics/live")
+async def stream_analytics(websocket: WebSocket):
+    """Stream live analytics aggregations every 2 seconds."""
+    from sqlalchemy import text
+    from db.database import async_session_maker
+    from datetime import datetime
+    
+    await websocket.accept()
+    
+    try:
+        await websocket.send_json({
+            "type": "connection_established",
+            "stream": "analytics",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        
+        while True:
+            try:
+                async with async_session_maker() as db:
+                    stats_query = text("""
+                        SELECT COUNT(DISTINCT agent_id) as active_agents,
+                                COUNT(*) as total_acquisitions,
+                                SUM(knowledge_count) as total_knowledge_items,
+                                COUNT(DISTINCT topic) as unique_topics,
+                                AVG(curiosity_signal) as avg_curiosity,
+                                MAX(created_at) as last_activity
+                        FROM knowledge_acquisition_log
+                        WHERE created_at > NOW() - INTERVAL '1 hour'
+                    """)
+                    
+                    result = await db.execute(stats_query)
+                    row = result.fetchone()
+                    
+                    topics_query = text("""
+                        SELECT topic, COUNT(*) as exploration_count
+                        FROM knowledge_acquisition_log
+                        WHERE created_at > NOW() - INTERVAL '1 hour' AND topic IS NOT NULL
+                        GROUP BY topic
+                        ORDER BY exploration_count DESC LIMIT 5
+                    """)
+                    
+                    topics_result = await db.execute(topics_query)
+                    top_topics = [{"topic": r.topic, "count": r.exploration_count} for r in topics_result.fetchall()]
+                    
+                    await websocket.send_json({
+                        "type": "analytics_update",
+                        "data": {
+                            "active_agents": row.active_agents or 0,
+                            "total_acquisitions": row.total_acquisitions or 0,
+                            "total_knowledge_items": row.total_knowledge_items or 0,
+                            "unique_topics": row.unique_topics or 0,
+                            "avg_curiosity": float(row.avg_curiosity) if row.avg_curiosity else 0.0,
+                            "last_activity": row.last_activity.isoformat() if row.last_activity else None,
+                            "top_topics": top_topics,
+                        },
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                
+                await asyncio.sleep(2)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                await websocket.send_json({
+                    "type": "error",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+                await asyncio.sleep(2)
+    except WebSocketDisconnect:
+        pass

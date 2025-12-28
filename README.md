@@ -7,28 +7,22 @@ Python backend for Earthlink - autonomous agent training platform.
 - Python 3.11+
 - Docker and Docker Compose
 - PostgreSQL with PostGIS extension
-- Redis
+- Redis, ChromaDB, Ollama
 
-## Installation
+## Quick Start
 
-Install dependencies:
+See [SETUP.md](/_docs/SETUP.md) for comprehensive setup guide.
+
+Initialize database:
 
 ```bash
-pip install -e .
+python scripts/init_database.py
 ```
-
-## Running
 
 Start all services:
 
 ```bash
 docker compose up -d
-```
-
-Run database migrations:
-
-```bash
-docker compose exec api alembic upgrade head
 ```
 
 ## Development
@@ -54,7 +48,9 @@ mypy src/
 
 ## API Documentation
 
-API docs available at http://localhost:8000/docs when server is running.
+- OpenAPI docs: http://localhost:8000/docs
+- Health checks: http://localhost:8000/health/status
+- WebSocket commands: ws://localhost:8000/ws/commands/stream
 
 ## Database
 
@@ -78,7 +74,16 @@ alembic revision --autogenerate -m "description"
 
 ## Scripts
 
-Utility scripts are in `scripts/` directory.
+- `scripts/init_database.py` - Initialize database (extensions, tables, seed data)
+- `scripts/earthlink_cli.py` - CLI tool for agent/simulation control
+
+## CLI Usage
+
+```bash
+python scripts/earthlink_cli.py agent list
+python scripts/earthlink_cli.py sim status
+python scripts/earthlink_cli.py health
+```
 
 ## Configuration
 

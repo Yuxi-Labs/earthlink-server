@@ -12,6 +12,8 @@ import ray
 
 from .events import Event, EventBus, EventType
 from .world import World, WorldRegistry
+from .episode import EpisodeManager
+from .persistence import StatePersistence
 
 
 class SimulationState(Enum):
@@ -30,6 +32,7 @@ class SimulationConfig:
     # Timing
     steps_per_second: float = 10.0
     max_steps: int | None = None
+    speed_multiplier: float = 1.0  # Speed control: 0.1 = slow, 1.0 = normal, 10.0 = fast
 
     # Agents
     max_agents: int = 100
@@ -68,6 +71,12 @@ class SimulationRunner:
         # Components
         self.event_bus = EventBus()
         self.world_registry = WorldRegistry()
+        self.episode_manager = EpisodeManager(max_episodes=1000)
+        self.state_persistence = StatePersistence(storage_dir="snapshots")
+        
+        # Register world types
+        from src.worlds.earth import EarthWorld
+        self.world_registry.register_world_class("earth", EarthWorld)
 
         # Agent management
         self._agents: dict[UUID, ray.ObjectRef] = {}
@@ -131,7 +140,12 @@ class SimulationRunner:
     # -------------------------------------------------------------------------
     # Agent Management
     # -------------------------------------------------------------------------
-    placement_group: str | None = None,
+    
+    async def spawn_agent(
+        self,
+        name: str,
+        config: dict[str, Any] | None = None,
+        placement_group: str | None = None,
     ) -> UUID:
         """Spawn a new agent."""
         from ..agents.core import Agent
@@ -172,11 +186,6 @@ class SimulationRunner:
         self.event_bus.publish(Event(
             event_type=EventType.AGENT_SPAWNED,
             source_agent_id=agent_id,
-            data={"name": name, "config": agent_config, "placement_group": placement_group
-
-        self.event_bus.publish(Event(
-            event_type=EventType.AGENT_SPAWNED,
-            source_agent_id=agent_id,
             data={"name": name, "config": agent_config},
         ))
 
@@ -213,14 +222,19 @@ class SimulationRunner:
         world_id: str,
     ) -> bool:
         """Assign an agent to explore a world."""
+        print(f"[DEBUG] Assigning agent {agent_id} to world {world_id}")
+        
         if agent_id not in self._agents:
+            print(f"[DEBUG] Agent {agent_id} not in self._agents")
             return False
 
         world = self.world_registry.get_world(world_id)
         if world is None:
+            print(f"[DEBUG] World {world_id} not found in registry")
             return False
 
         # Load world if needed
+        print(f"[DEBUG] World found, _is_loaded={getattr(world, '_is_loaded', 'MISSING')}")
         if not world._is_loaded:
             await world.load()
             self.event_bus.publish(Event(
@@ -233,6 +247,7 @@ class SimulationRunner:
         await agent_ref.set_target_world.remote(world_id)
 
         self._agent_worlds[agent_id] = world_id
+        print(f"[DEBUG] Successfully assigned agent {agent_id} to world {world_id}")
         return True
 
     async def get_agent_state(self, agent_id: UUID) -> dict[str, Any] | None:
@@ -289,10 +304,13 @@ class SimulationRunner:
             return
 
         self.state = SimulationState.RUNNING
-        step_delay = 1.0 / self.config.steps_per_second
 
         while self.state == SimulationState.RUNNING:
             start_time = asyncio.get_event_loop().time()
+
+            # Calculate step delay with speed multiplier
+            base_step_delay = 1.0 / self.config.steps_per_second
+            step_delay = base_step_delay / self.config.speed_multiplier
 
             # Run one simulation step
             await self._step()

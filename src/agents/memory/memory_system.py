@@ -101,6 +101,34 @@ class MemorySystem:
         query_embedding = self.encoder.encode(query).tolist()
         return self.long_term.search(query_embedding, top_k=top_k)
 
+    async def store_semantic(
+        self,
+        content: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """
+        Store content in semantic/long-term memory (async wrapper).
+        
+        This is the async interface used by knowledge sources.
+        """
+        return self.encode_to_long_term(
+            content=content,
+            source=metadata.get("source", "knowledge") if metadata else "knowledge",
+            metadata=metadata,
+        )
+
+    async def query_semantic(
+        self,
+        query: str,
+        k: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Query semantic memory for relevant content (async wrapper).
+        
+        This is the async interface used by agent exploration.
+        """
+        return self.retrieve_relevant(query=query, top_k=k)
+
     # -------------------------------------------------------------------------
     # Episodic memory operations
     # -------------------------------------------------------------------------

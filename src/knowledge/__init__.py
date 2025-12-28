@@ -34,6 +34,3 @@ __all__ = [
     "GeoSource",
     "get_geo_source",
 ]
-    "Tweet",
-    "TwitterUser",
-]

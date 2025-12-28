@@ -1,6 +1,8 @@
 services:
   api:
-    build: .
+    build:
+      context: .
+      target: dev
     container_name: earthlink-api
     ports:
       - "8000:8000"
@@ -9,6 +11,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_URL=http://ollama:11434
       - CHROMA_URL=http://chromadb:8000
+      - PYTHONPATH=/app/src:/app
     depends_on:
       db:
         condition: service_healthy
@@ -18,6 +21,11 @@ services:
         condition: service_started
     volumes:
       - ./src:/app/src
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./scripts:/app/scripts
+      - osm_data:/tmp/geofabrik
+      - db_backups:/tmp/backups
     networks:
       - earthlink-net
     deploy:
@@ -39,8 +47,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/home/postgres/pgdata
       - ./init-timescale.sql:/docker-entrypoint-initdb.d/init-timescale.sql
+      - osm_data:/tmp/geofabrik
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U earthlink"]
       interval: 5s
@@ -93,6 +102,8 @@ volumes:
   redis_data:
   chroma_data:
   ollama_data:
+  osm_data:
+  db_backups:
 
 networks:
   earthlink-net:

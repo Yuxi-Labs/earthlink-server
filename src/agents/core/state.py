@@ -53,6 +53,8 @@ class AgentMetrics:
     knowledge_sources_queried: int = 0
     prediction_errors: float = 0.0
     novelty_encountered: float = 0.0
+    training_steps: int = 0
+    last_training_loss: float = 0.0
 
 
 @dataclass
@@ -95,6 +97,8 @@ class AgentState:
                 "knowledge_sources_queried": self.metrics.knowledge_sources_queried,
                 "prediction_errors": self.metrics.prediction_errors,
                 "novelty_encountered": self.metrics.novelty_encountered,
+                "training_steps": self.metrics.training_steps,
+                "last_training_loss": self.metrics.last_training_loss,
             },
             "current_goal_id": str(self.current_goal_id) if self.current_goal_id else None,
             "target_world": self.target_world,

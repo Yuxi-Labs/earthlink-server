@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.database import get_db
+from src.db.database import get_db, async_session_maker
 
 
 class GeoSource:
@@ -42,7 +42,7 @@ class GeoSource:
         # Create point geometry
         point_wkt = f"POINT({lon} {lat})"
         
-        async with get_db() as db:
+        async with async_session_maker() as db:
             # Query spatial data (assumes a features table exists)
             query = text("""
                 SELECT 
@@ -100,7 +100,7 @@ class GeoSource:
         Returns:
             Region data including boundaries, area, centroid
         """
-        async with get_db() as db:
+        async with async_session_maker() as db:
             query = text("""
                 SELECT 
                     id,
@@ -166,7 +166,7 @@ class GeoSource:
         polygon_wkt = params.get("polygon_wkt")
         limit = params.get("limit", 100)
         
-        async with get_db() as db:
+        async with async_session_maker() as db:
             query = text("""
                 SELECT 
                     id,
@@ -203,7 +203,7 @@ class GeoSource:
         geometry_wkt = params.get("geometry_wkt")
         limit = params.get("limit", 100)
         
-        async with get_db() as db:
+        async with async_session_maker() as db:
             query = text("""
                 SELECT 
                     id,
@@ -242,7 +242,7 @@ class GeoSource:
         
         point_wkt = f"POINT({lon} {lat})"
         
-        async with get_db() as db:
+        async with async_session_maker() as db:
             query = text("""
                 SELECT 
                     id,
@@ -279,7 +279,7 @@ class GeoSource:
         
         point_wkt = f"POINT({lon} {lat})"
         
-        async with get_db() as db:
+        async with async_session_maker() as db:
             query = text("""
                 SELECT 
                     id,
@@ -317,38 +317,130 @@ class GeoSource:
         self,
         lat: float,
         lon: float,
+        radius_meters: float = 5000,
     ) -> dict[str, Any]:
         """
-        Get comprehensive context about a location.
+        Get comprehensive context about a location using real OSM data.
         
-        Returns nearby features, containing regions, etc.
+        Queries nearby POIs, places, and landmarks from OSM tables.
         
         Args:
             lat: Latitude
             lon: Longitude
+            radius_meters: Search radius in meters (default 5km)
             
         Returns:
-            Complete location context
+            Complete location context with actual OSM features
         """
-        # Parallel queries
         import asyncio
         
-        nearby_features_task = self.get_nearby_features(lat, lon, radius_meters=5000, limit=20)
-        containing_regions_task = self.spatial_query(
-            "contains",
-            {"lat": lat, "lon": lon}
-        )
+        # Create point geometry
+        point_wkt = f"POINT({lon} {lat})"
         
-        nearby_features, containing_regions = await asyncio.gather(
-            nearby_features_task,
-            containing_regions_task,
-        )
+        async with async_session_maker() as db:
+            # Query 1: Nearby POIs (landmarks, attractions)
+            pois_query = text("""
+                SELECT 
+                    name,
+                    poi_type,
+                    category,
+                    ST_Distance(
+                        geom::geography,
+                        ST_GeomFromText(:point_wkt, 4326)::geography
+                    ) as distance_meters
+                FROM pois
+                WHERE name IS NOT NULL 
+                  AND name != ''
+                  AND ST_DWithin(
+                    geom::geography,
+                    ST_GeomFromText(:point_wkt, 4326)::geography,
+                    :radius
+                  )
+                ORDER BY distance_meters
+                LIMIT 20
+            """)
+            
+            # Query 2: Nearby places (cities, suburbs, towns)
+            places_query = text("""
+                SELECT 
+                    name,
+                    place_type,
+                    population,
+                    ST_Distance(
+                        geom::geography,
+                        ST_GeomFromText(:point_wkt, 4326)::geography
+                    ) as distance_meters
+                FROM places
+                WHERE name IS NOT NULL
+                  AND name != ''
+                  AND ST_DWithin(
+                    geom::geography,
+                    ST_GeomFromText(:point_wkt, 4326)::geography,
+                    :radius
+                  )
+                ORDER BY distance_meters
+                LIMIT 10
+            """)
+            
+            # Query 3: Containing boundaries (administrative regions)
+            boundaries_query = text("""
+                SELECT 
+                    name,
+                    boundary_type,
+                    admin_level
+                FROM boundaries
+                WHERE name IS NOT NULL
+                  AND name != ''
+                  AND ST_Contains(
+                    geom,
+                    ST_GeomFromText(:point_wkt, 4326)
+                  )
+                ORDER BY admin_level DESC
+                LIMIT 5
+            """)
+            
+            # Execute queries
+            params = {"point_wkt": point_wkt, "radius": radius_meters}
+            
+            pois_result = await db.execute(pois_query, params)
+            places_result = await db.execute(places_query, params)
+            boundaries_result = await db.execute(boundaries_query, {"point_wkt": point_wkt})
+            
+            # Process POIs
+            nearby_features = []
+            for row in pois_result.fetchall():
+                nearby_features.append({
+                    "name": row.name,
+                    "type": row.poi_type or row.category,
+                    "category": row.category,
+                    "distance_meters": float(row.distance_meters),
+                })
+            
+            # Process places
+            nearby_places = []
+            for row in places_result.fetchall():
+                nearby_places.append({
+                    "name": row.name,
+                    "type": row.place_type,
+                    "population": row.population,
+                    "distance_meters": float(row.distance_meters),
+                })
+            
+            # Process boundaries
+            containing_regions = []
+            for row in boundaries_result.fetchall():
+                containing_regions.append({
+                    "name": row.name,
+                    "type": row.boundary_type,
+                    "admin_level": row.admin_level,
+                })
         
         return {
             "lat": lat,
             "lon": lon,
-            "nearby_features": nearby_features,
-            "containing_regions": containing_regions,
+            "nearby_features": nearby_features,  # POIs
+            "nearby_places": nearby_places,      # Cities, suburbs
+            "containing_regions": containing_regions,  # Countries, states
         }
 
 

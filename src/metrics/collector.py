@@ -357,3 +357,60 @@ class MetricsCollector:
         )
         
         return score
+
+    async def get_knowledge_logs(
+        self,
+        agent_id: UUID | None = None,
+        sources: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Fetch knowledge acquisition log entries for auditing learning events."""
+        conditions = []
+        params: dict[str, Any] = {}
+
+        if agent_id:
+            conditions.append("agent_id = :agent_id")
+            params["agent_id"] = agent_id
+
+        if sources:
+            conditions.append("source = ANY(:sources)")
+            params["sources"] = sources
+
+        if start_time:
+            conditions.append("timestamp >= :start_time")
+            params["start_time"] = start_time
+
+        if end_time:
+            conditions.append("timestamp <= :end_time")
+            params["end_time"] = end_time
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        query = text(f"""
+            SELECT id, agent_id, timestamp, source, topic, content_summary, knowledge_count, metadata
+            FROM knowledge_acquisition_log
+            WHERE {where_clause}
+            ORDER BY timestamp DESC
+            LIMIT :limit
+        """)
+
+        params["limit"] = limit
+
+        result = await self.db.execute(query, params)
+        rows = result.fetchall()
+
+        return [
+            {
+                "id": str(row[0]),
+                "agent_id": str(row[1]),
+                "timestamp": row[2],
+                "source": row[3],
+                "topic": row[4],
+                "content_summary": row[5],
+                "knowledge_count": row[6],
+                "metadata": row[7] or {},
+            }
+            for row in rows
+        ]

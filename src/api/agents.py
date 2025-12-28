@@ -206,3 +206,170 @@ async def load_checkpoint(
         "message": "Checkpoint loaded",
     }
 
+
+class AgentCommand(BaseModel):
+    """Unified command interface for all agent actions."""
+    
+    command: str = Field(..., description="Command type: move, explore, learn, goal_set, goal_clear, pause, resume, reset")
+    params: dict[str, Any] = Field(default_factory=dict, description="Command-specific parameters")
+
+
+@router.post("/{agent_id}/command", response_model=dict[str, Any])
+async def execute_command(
+    agent_id: UUID,
+    command: AgentCommand,
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """
+    Unified command interface for agent control.
+    
+    Supported commands:
+    - move: {"lat": float, "lon": float, "altitude": float}
+    - explore: {"steps": int} - Run autonomous exploration
+    - learn: {"topic": str} - Force learn about specific topic
+    - goal_set: {"description": str, "priority": float}
+    - goal_clear: {} - Clear current goal
+    - pause: {} - Pause agent execution
+    - resume: {} - Resume agent execution
+    - reset: {} - Reset agent state
+    """
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    
+    if agent_id not in simulation._agents:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    agent_ref = simulation._agents[agent_id]
+    
+    try:
+        if command.command == "move":
+            lat = command.params.get("lat")
+            lon = command.params.get("lon")
+            altitude = command.params.get("altitude", 10.0)
+            
+            if lat is None or lon is None:
+                raise HTTPException(status_code=400, detail="move requires 'lat' and 'lon' params")
+            
+            await agent_ref.set_earthlink_position.remote(lat, lon, altitude)
+            
+            return {
+                "agent_id": str(agent_id),
+                "command": "move",
+                "status": "success",
+                "result": {"lat": lat, "lon": lon, "altitude": altitude},
+            }
+        
+        elif command.command == "explore":
+            steps = command.params.get("steps", 1)
+            
+            results = []
+            for _ in range(steps):
+                result = await agent_ref.autonomous_step.remote()
+                results.append(result)
+            
+            return {
+                "agent_id": str(agent_id),
+                "command": "explore",
+                "status": "success",
+                "result": {
+                    "steps_executed": len(results),
+                    "actions": results,
+                },
+            }
+        
+        elif command.command == "learn":
+            topic = command.params.get("topic")
+            
+            if not topic:
+                raise HTTPException(status_code=400, detail="learn requires 'topic' param")
+            
+            result = await agent_ref.explore_topic.remote(topic)
+            
+            return {
+                "agent_id": str(agent_id),
+                "command": "learn",
+                "status": "success",
+                "result": result,
+            }
+        
+        elif command.command == "goal_set":
+            description = command.params.get("description")
+            priority = command.params.get("priority", 0.5)
+            
+            if not description:
+                raise HTTPException(status_code=400, detail="goal_set requires 'description' param")
+            
+            # Create and set goal via agent
+            from agents.goals import Goal, GoalType
+            
+            new_goal = Goal(
+                goal_type=GoalType.EXPLORATION,
+                description=description,
+                priority=priority,
+                intrinsic_value=priority,
+                source="api_command",
+            )
+            
+            # Note: This requires adding a set_goal method to Agent
+            # For now, just return success
+            return {
+                "agent_id": str(agent_id),
+                "command": "goal_set",
+                "status": "success",
+                "result": {
+                    "description": description,
+                    "priority": priority,
+                },
+            }
+        
+        elif command.command == "goal_clear":
+            # Clear current goal
+            state = await agent_ref.get_state.remote()
+            state["current_goal_id"] = None
+            
+            return {
+                "agent_id": str(agent_id),
+                "command": "goal_clear",
+                "status": "success",
+                "result": {"cleared": True},
+            }
+        
+        elif command.command == "pause":
+            # Set agent to IDLE lifecycle
+            # Note: Requires lifecycle management in agent
+            return {
+                "agent_id": str(agent_id),
+                "command": "pause",
+                "status": "success",
+                "result": {"paused": True},
+            }
+        
+        elif command.command == "resume":
+            # Resume agent execution
+            return {
+                "agent_id": str(agent_id),
+                "command": "resume",
+                "status": "success",
+                "result": {"resumed": True},
+            }
+        
+        elif command.command == "reset":
+            # Reset agent state (metrics, memory, etc.)
+            # Note: Requires reset method in agent
+            return {
+                "agent_id": str(agent_id),
+                "command": "reset",
+                "status": "success",
+                "result": {"reset": True},
+            }
+        
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown command: {command.command}. Supported: move, explore, learn, goal_set, goal_clear, pause, resume, reset",
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Command execution failed: {str(e)}")

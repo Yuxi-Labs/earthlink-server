@@ -17,6 +17,7 @@ class SimulationConfig(BaseModel):
 
     steps_per_second: float = 10.0
     max_steps: int | None = None
+    speed_multiplier: float = 1.0
     train_every_n_steps: int = 4
     batch_size: int = 32
     checkpoint_every_n_steps: int = 1000
@@ -103,6 +104,82 @@ async def stop_simulation(simulation=Depends(get_simulation)) -> dict[str, Any]:
         "message": "Simulation stopped",
         "status": "STOPPED",
     }
+
+
+@router.post("/speed/set")
+async def set_simulation_speed(
+    multiplier: float,
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """Set simulation speed multiplier.
+    
+    Args:
+        multiplier: Speed multiplier (0.1 = slow motion, 1.0 = normal, 10.0 = fast forward)
+    """
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not initialized")
+    
+    if multiplier <= 0:
+        raise HTTPException(status_code=400, detail="Speed multiplier must be positive")
+    
+    simulation.config.speed_multiplier = multiplier
+    
+    return {
+        "message": f"Simulation speed set to {multiplier}x",
+        "speed_multiplier": multiplier,
+        "effective_sps": simulation.config.steps_per_second * multiplier,
+    }
+
+
+@router.get("/speed")
+async def get_simulation_speed(
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """Get current simulation speed."""
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not initialized")
+    
+    return {
+        "speed_multiplier": simulation.config.speed_multiplier,
+        "base_sps": simulation.config.steps_per_second,
+        "effective_sps": simulation.config.steps_per_second * simulation.config.speed_multiplier,
+    }
+
+
+@router.post("/speed/slow")
+async def slow_motion(
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """Set simulation to slow motion (0.25x speed)."""
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not initialized")
+    
+    simulation.config.speed_multiplier = 0.25
+    return {"message": "Slow motion activated", "speed_multiplier": 0.25}
+
+
+@router.post("/speed/normal")
+async def normal_speed(
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """Set simulation to normal speed (1.0x)."""
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not initialized")
+    
+    simulation.config.speed_multiplier = 1.0
+    return {"message": "Normal speed restored", "speed_multiplier": 1.0}
+
+
+@router.post("/speed/fast")
+async def fast_forward(
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """Set simulation to fast forward (5.0x speed)."""
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not initialized")
+    
+    simulation.config.speed_multiplier = 5.0
+    return {"message": "Fast forward activated", "speed_multiplier": 5.0}
 
 
 @router.get("/events")

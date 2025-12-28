@@ -39,6 +39,19 @@ class ReadinessMetricRecord(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class KnowledgeLogResponse(BaseModel):
+    """Schema for knowledge acquisition log entry."""
+
+    id: str
+    agent_id: str
+    timestamp: datetime
+    source: str
+    topic: str | None = None
+    content_summary: str | None = None
+    knowledge_count: int
+    metadata: dict[str, Any] | None = None
+
+
 # -------------------------------------------------------------------------
 # Endpoints
 # -------------------------------------------------------------------------
@@ -224,3 +237,23 @@ async def get_readiness_score(
             "deployment_ready": 0.85,
         },
     }
+
+
+@router.get("/knowledge", response_model=list[KnowledgeLogResponse])
+async def get_knowledge_logs(
+    agent_id: UUID | None = None,
+    sources: list[str] | None = Query(None),
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    limit: int = Query(200, le=5000),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Fetch recent knowledge acquisition events for auditing learning."""
+    collector = MetricsCollector(db)
+    return await collector.get_knowledge_logs(
+        agent_id=agent_id,
+        sources=sources,
+        start_time=start_time,
+        end_time=end_time,
+        limit=limit,
+    )

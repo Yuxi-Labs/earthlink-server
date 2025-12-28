@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_timescale_hypertables'
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = '001'
 depends_on: Union[str, None] = None
 
 

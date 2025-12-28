@@ -1,9 +1,12 @@
 """Core Agent class - autonomous intelligent actor."""
 
+import asyncio
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+import httpx
+import numpy as np
 import ray
 import torch
 
@@ -50,10 +53,28 @@ class Agent:
 
         # Device for PyTorch
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Earthlink location awareness (use Docker service name if available)
+        import os
+        earthlink_host = os.getenv("EARTHLINK_API_HOST", "localhost")
+        self._earthlink_api_base = f"http://{earthlink_host}:8000/api/v1/earthlink"
+        self._http_client: httpx.AsyncClient | None = None
 
     # -------------------------------------------------------------------------
     # Lifecycle
     # -------------------------------------------------------------------------
+
+    async def _run_with_retries(self, coro, retries: int = 2, delay: float = 0.5):
+        """Run coroutine with simple retry to handle flaky knowledge sources."""
+        attempt = 0
+        while True:
+            try:
+                return await coro
+            except Exception as e:
+                attempt += 1
+                if attempt > retries:
+                    raise e
+                await asyncio.sleep(delay)
 
     def get_state(self) -> dict[str, Any]:
         """Return serializable agent state."""
@@ -232,7 +253,7 @@ class Agent:
 
     async def query_wikipedia(self, query: str, **kwargs) -> dict[str, Any]:
         """Query Wikipedia for knowledge."""
-        from ...knowledge import WikipediaSource
+        from knowledge import WikipediaSource
         
         wiki = WikipediaSource()
         
@@ -256,9 +277,9 @@ class Agent:
 
     async def query_ollama(self, prompt: str, model: str = "llama2", **kwargs) -> dict[str, Any]:
         """Query Ollama for knowledge or reasoning."""
-        from ...knowledge import OllamaSource
+        from knowledge import OllamaGateway
         
-        ollama = OllamaSource()
+        ollama = OllamaGateway()
         
         # Generate response
         response = await ollama.generate(prompt=prompt, model=model, **kwargs)
@@ -274,17 +295,15 @@ class Agent:
 
     async def search_web(self, query: str, provider: str = "duckduckgo", **kwargs) -> dict[str, Any]:
         """Search the web for information."""
-        from ...knowledge import SearchSource
+        from knowledge import DuckDuckGoSearchProvider
         
-        search = SearchSource()
+        search = DuckDuckGoSearchProvider()
         
-        # Search using specified provider
-        if provider == "serper" and search.serper:
-            results = await search.serper_search(query, **kwargs)
-        elif provider == "tavily" and search.tavily:
-            results = await search.tavily_search(query, **kwargs)
-        else:
-            results = await search.duckduckgo_search(query, **kwargs)
+        # Search using DuckDuckGo
+        search_results = await search.search(query, **kwargs)
+        
+        # Convert SearchResult objects to dicts
+        results = [{"title": r.title, "url": r.url, "snippet": r.snippet} for r in search_results]
         
         # Store results in semantic memory
         if results and self._memory:
@@ -299,7 +318,7 @@ class Agent:
 
     async def query_reddit(self, subreddit: str, **kwargs) -> dict[str, Any]:
         """Query Reddit for discussions and knowledge."""
-        from ...knowledge import RedditSource
+        from knowledge import RedditSource
         
         reddit = RedditSource()
         
@@ -319,7 +338,7 @@ class Agent:
 
     async def query_twitter(self, query: str, **kwargs) -> dict[str, Any]:
         """Query Twitter/X for recent discussions."""
-        from ...knowledge import TwitterSource
+        from knowledge import TwitterSource
         
         twitter = TwitterSource()
         
@@ -354,12 +373,16 @@ class Agent:
         Returns:
             Nearby geographic features and regions
         """
-        from ...knowledge import get_geo_source
+        from knowledge import get_geo_source
         
         geo = get_geo_source()
         
         # Get location context (features + regions)
-        context = await geo.get_location_context(lat, lon)
+        try:
+            context = await geo.get_location_context(lat, lon)
+        except Exception:
+            # Handle missing geo_features table or other DB issues gracefully
+            context = {"nearby_features": [], "containing_regions": []}
         
         # Store in semantic memory
         if context and self._memory:
@@ -423,6 +446,266 @@ class Agent:
         
         return results
 
+    # -------------------------------------------------------------------------
+    # Earthlink Location Awareness
+    # -------------------------------------------------------------------------
+    
+    def get_latitude(self) -> float:
+        """Get current latitude in Earthlink (stored in location.x)."""
+        return self.state.location.x
+    
+    def get_longitude(self) -> float:
+        """Get current longitude in Earthlink (stored in location.y)."""
+        return self.state.location.y
+    
+    def get_altitude(self) -> float:
+        """Get current altitude in meters (stored in location.z)."""
+        return self.state.location.z
+    
+    @property
+    def latitude(self) -> float:
+        """Current latitude in Earthlink (stored in location.x)."""
+        return self.state.location.x
+    
+    @property
+    def longitude(self) -> float:
+        """Current longitude in Earthlink (stored in location.y)."""
+        return self.state.location.y
+    
+    @property
+    def altitude(self) -> float:
+        """Current altitude in meters (stored in location.z)."""
+        return self.state.location.z
+    
+    def set_earthlink_position(self, lat: float, lon: float, altitude: float = 0.0) -> None:
+        """
+        Set agent's position in Earthlink.
+        
+        Args:
+            lat: Latitude (-90 to 90)
+            lon: Longitude (-180 to 180)
+            altitude: Altitude in meters (default 0)
+        """
+        self.state.location.x = lat
+        self.state.location.y = lon
+        self.state.location.z = altitude
+    
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client for Earthlink API."""
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(timeout=30.0)
+        return self._http_client
+    
+    async def earthlink_query_nearby(
+        self,
+        radius_meters: float = 500,
+        limit: int = 10,
+        feature_types: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Query nearby features from Earthlink at current position.
+        
+        Args:
+            radius_meters: Search radius (10-50000)
+            limit: Max results per feature type (1-100)
+            feature_types: Filter types (buildings, roads, places, pois, water, landcover)
+        
+        Returns:
+            Dict with nearby buildings, roads, POIs, etc.
+        """
+        client = await self._get_http_client()
+        
+        params = {
+            "lat": self.latitude,
+            "lon": self.longitude,
+            "radius_meters": radius_meters,
+            "limit": limit,
+        }
+        
+        if feature_types:
+            params["types"] = ",".join(feature_types)
+        
+        response = await client.get(f"{self._earthlink_api_base}/nearby", params=params)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    async def earthlink_get_context(
+        self,
+        radius_meters: float = 5000,
+    ) -> dict[str, Any]:
+        """
+        Get comprehensive context about current location.
+        
+        Returns nearby features, containing regions (boundaries), and summary stats.
+        
+        Args:
+            radius_meters: Search radius (100-50000)
+        
+        Returns:
+            Dict with comprehensive location context
+        """
+        client = await self._get_http_client()
+        
+        params = {
+            "lat": self.latitude,
+            "lon": self.longitude,
+            "radius_meters": radius_meters,
+        }
+        
+        response = await client.get(f"{self._earthlink_api_base}/context", params=params)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    async def earthlink_get_regions(self) -> dict[str, Any]:
+        """
+        Get administrative boundaries containing current position.
+        
+        Returns nested regions (country → state → city → neighborhood).
+        
+        Returns:
+            Dict with containing regions
+        """
+        client = await self._get_http_client()
+        
+        params = {
+            "lat": self.latitude,
+            "lon": self.longitude,
+        }
+        
+        response = await client.get(f"{self._earthlink_api_base}/regions", params=params)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    async def earthlink_where_am_i(self) -> dict[str, Any]:
+        """
+        Answer the question: "Where am I?"
+        
+        Returns a human-readable description of current location including:
+        - Coordinates
+        - Administrative regions (city, state, country)
+        - Nearby landmarks/buildings
+        - Local roads
+        
+        Returns:
+            Dict with comprehensive "where am I" information
+        """
+        # Get both regions and nearby features
+        regions_data = await self.earthlink_get_regions()
+        nearby_data = await self.earthlink_query_nearby(radius_meters=200, limit=5)
+        
+        # Extract key information
+        regions = regions_data.get("regions", [])
+        
+        # Parse administrative hierarchy
+        admin_context = {
+            "neighborhood": None,
+            "city": None,
+            "state": None,
+            "country": None,
+        }
+        
+        for region in regions:
+            name = region.get("name", "")
+            
+            # Simple heuristics for region classification
+            if "neighborhood" in name.lower() or region.get("admin_level") == "10":
+                admin_context["neighborhood"] = name
+            elif "city" in name.lower() or region.get("admin_level") in ["8", "6"]:
+                admin_context["city"] = name
+            elif "state" in name.lower() or region.get("admin_level") == "4":
+                admin_context["state"] = name
+            elif "country" in name.lower() or region.get("admin_level") == "2":
+                admin_context["country"] = name
+        
+        # Get notable nearby features
+        nearby_buildings = nearby_data.get("by_category", {}).get("building", [])[:3]
+        nearby_roads = nearby_data.get("by_category", {}).get("road", [])[:3]
+        
+        # Build human-readable description
+        location_parts = []
+        if admin_context["neighborhood"]:
+            location_parts.append(admin_context["neighborhood"])
+        if admin_context["city"]:
+            location_parts.append(admin_context["city"])
+        if admin_context["state"]:
+            location_parts.append(admin_context["state"])
+        if admin_context["country"]:
+            location_parts.append(admin_context["country"])
+        
+        description = ", ".join(location_parts) if location_parts else "Unknown location"
+        
+        return {
+            "position": {
+                "latitude": self.latitude,
+                "longitude": self.longitude,
+                "altitude": self.altitude,
+            },
+            "description": description,
+            "administrative": admin_context,
+            "nearby_buildings": [
+                {
+                    "name": b.get("name", "Unnamed"),
+                    "type": b.get("type", "unknown"),
+                    "distance_meters": b.get("distance_meters", 0),
+                }
+                for b in nearby_buildings
+            ],
+            "nearby_roads": [
+                {
+                    "name": r.get("name", "Unnamed"),
+                    "type": r.get("type", "unknown"),
+                    "distance_meters": r.get("distance_meters", 0),
+                }
+                for r in nearby_roads
+            ],
+        }
+    
+    async def earthlink_spawn_random_city(self, region: str = "south_america") -> dict[str, Any]:
+        """
+        Spawn agent at a random major city.
+        
+        Args:
+            region: Geographic region (south_america, europe, north_america)
+        
+        Returns:
+            Dict with spawn location and context
+        """
+        import random
+        
+        # Major cities by region (with Earthlink coverage)
+        cities = {
+            "south_america": [
+                {"name": "São Paulo", "lat": -23.55, "lon": -46.63},
+                {"name": "Rio de Janeiro", "lat": -22.91, "lon": -43.17},
+                {"name": "Buenos Aires", "lat": -34.60, "lon": -58.38},
+                {"name": "Lima", "lat": -12.05, "lon": -77.03},
+                {"name": "Bogotá", "lat": 4.71, "lon": -74.07},
+                {"name": "Santiago", "lat": -33.45, "lon": -70.67},
+            ],
+        }
+        
+        city_list = cities.get(region.lower(), cities["south_america"])
+        selected_city = random.choice(city_list)
+        
+        # Set position
+        self.set_earthlink_position(selected_city["lat"], selected_city["lon"])
+        
+        # Get context
+        context = await self.earthlink_where_am_i()
+        
+        return {
+            "spawned_at": selected_city["name"],
+            "region": region,
+            "context": context,
+        }
+
+    # -------------------------------------------------------------------------
+    # Knowledge Exploration
+    # -------------------------------------------------------------------------
+
     async def explore_topic(self, topic: str) -> dict[str, Any]:
         """
         Autonomously explore a topic across multiple knowledge sources.
@@ -435,31 +718,32 @@ class Agent:
             "knowledge_gained": 0,
         }
         
-        # Query multiple sources in parallel
-        import asyncio
-        
+        # Query multiple sources in parallel with retries for flakiness
         tasks = {
-            "wikipedia": self.query_wikipedia(topic, limit=5),
-            "web": self.search_web(topic, provider="duckduckgo"),
+            "wikipedia": self._run_with_retries(self.query_wikipedia(topic, limit=5)),
+            "web": self._run_with_retries(self.search_web(topic, provider="duckduckgo")),
         }
         
         # Add optional sources if available
         try:
-            tasks["reddit"] = self.query_reddit(topic.replace(" ", ""))  # Attempt subreddit name
+            tasks["reddit"] = self._run_with_retries(self.query_reddit(topic.replace(" ", "")))  # Attempt subreddit name
         except:
             pass
         
         try:
-            tasks["twitter"] = self.query_twitter(topic, max_results=10)
+            tasks["twitter"] = self._run_with_retries(self.query_twitter(topic, max_results=10))
         except:
             pass
         
         # Execute all queries
         task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         
-        # Collect results
+        # Collect results (skip failed sources)
         for source_name, result in zip(tasks.keys(), task_results):
-            if not isinstance(result, Exception):
+            if isinstance(result, Exception):
+                # Log but don't fail - some sources may not work
+                print(f"[Agent {self.state.id}] Knowledge source '{source_name}' failed: {result}")
+            else:
                 results["sources"][source_name] = result
                 # Count knowledge items
                 if "results" in result:
@@ -469,8 +753,24 @@ class Agent:
                 elif "tweets" in result:
                     results["knowledge_gained"] += len(result["tweets"])
         
-        # Update exploration metrics
-        self.state.metrics.topics_explored += 1
+        # Get goal context for logging
+        goal_context_str = None
+        if self._goal_system and self.state.current_goal_id:
+            current_goal = self._goal_system.get_goal(self.state.current_goal_id)
+            if current_goal:
+                goal_context_str = current_goal.description
+        
+        # Log to database for audit trail
+        if results["knowledge_gained"] > 0:
+            await self._log_knowledge_acquisition(
+                topic=topic,
+                sources=list(results["sources"].keys()),
+                knowledge_count=results["knowledge_gained"],
+                content_summary=str(results["sources"])[:500],  # First 500 chars
+                goal_context=goal_context_str,
+                curiosity_signal=None,  # Not available in direct explore_topic call
+            )
+            self.state.metrics.topics_explored += 1
         
         return results
 
@@ -496,11 +796,15 @@ class Agent:
         exploration_signal = self._compute_exploration_signal()
         
         # 3. Decide on action: knowledge acquisition or policy action
-        if exploration_signal > self.config.get("exploration_threshold", 0.5):
+        threshold = self.config.get("exploration_threshold", 0.3)
+        if exploration_signal >= threshold:
             # High curiosity - acquire knowledge from external world
-            action = await self._explore_knowledge()
+            print(f"[Agent {self.state.id}] exploration_signal={exploration_signal:.4f} >= {threshold}, exploring knowledge")
+            action = await self._explore_knowledge(curiosity_signal=exploration_signal)
+            print(f"[Agent {self.state.id}] knowledge exploration returned: {action}")
         else:
             # Low curiosity - execute policy action in environment
+            print(f"[Agent {self.state.id}] exploration_signal={exploration_signal:.4f} < {threshold}, taking policy action")
             observation = self._get_current_observation()
             action = self.step(observation)
         
@@ -548,6 +852,11 @@ class Agent:
             if batch:
                 losses = self._update_networks(batch)
 
+        if losses:
+            mean_loss = float(sum(losses.values()) / max(len(losses), 1))
+            self.state.metrics.last_training_loss = mean_loss
+            self.state.metrics.training_steps += 1
+
         # Update reward metrics
         reward = transition.get("reward", 0.0)
         self.state.metrics.total_rewards += reward
@@ -588,10 +897,14 @@ class Agent:
         
         # Use goal proposer to generate candidate goals
         with torch.no_grad():
-            goal_embeddings = self._goal_system.goal_proposer(state.unsqueeze(0))
+            goal_embeddings = self._goal_system.goal_proposer(state.unsqueeze(0))  # [1, num_proposals, goal_dim]
+            num_proposals = goal_embeddings.shape[1]
+            
+            # Expand state to match number of proposals
+            expanded_state = state.unsqueeze(0).expand(num_proposals, -1)  # [num_proposals, state_dim]
             goal_values = self._goal_system.goal_value(
-                state.unsqueeze(0).expand(goal_embeddings.shape[0], -1),
-                goal_embeddings.squeeze(0)
+                expanded_state,
+                goal_embeddings.squeeze(0)  # [num_proposals, goal_dim]
             )
         
         # Select highest value goal
@@ -601,9 +914,9 @@ class Agent:
         # Create goal from embedding
         from ..goals import Goal, GoalType
         new_goal = Goal(
-            type=GoalType.KNOWLEDGE,
+            goal_type=GoalType.EXPLORATION,
             description=f"Explore state space (novelty: {goal_values[best_idx].item():.3f})",
-            target_embedding=best_goal_embedding,
+            embedding=best_goal_embedding,
         )
         
         self._goal_system.add_goal(new_goal)
@@ -643,7 +956,7 @@ class Agent:
         
         return signal
 
-    async def _explore_knowledge(self) -> dict[str, Any]:
+    async def _explore_knowledge(self, curiosity_signal: float | None = None) -> dict[str, Any]:
         """
         Execute knowledge exploration action.
         
@@ -652,15 +965,20 @@ class Agent:
         # Get current goal to inform exploration
         goal_topic = None
         goal_achieved = False
+        goal_context = None
         
         if self._goal_system and self.state.current_goal_id:
             current_goal = self._goal_system.get_goal(self.state.current_goal_id)
             if current_goal:
+                goal_context = current_goal.description
                 # Parse goal description for topic
                 desc = current_goal.description
                 if "Explore" in desc or "Learn about" in desc:
                     # Extract topic from goal description
                     goal_topic = desc.split("Explore")[-1].split("Learn about")[-1].strip()
+                    # Strip novelty score if present (e.g., "state space (novelty: 0.480)" -> skip it)
+                    if "(" in goal_topic and "novelty" in goal_topic:
+                        goal_topic = None  # Skip auto-generated goals, use _sample_exploration_topic instead
                 elif desc not in ["Explore state space", "Auto-proposed goal"]:
                     goal_topic = desc
         
@@ -675,7 +993,7 @@ class Agent:
             if self._goal_system:
                 from ..goals import Goal, GoalType
                 new_goal = Goal(
-                    type=GoalType.KNOWLEDGE,
+                    goal_type=GoalType.EXPLORATION,
                     description=f"Learn about {topic}",
                     priority=0.7,
                     intrinsic_value=0.7,
@@ -694,13 +1012,11 @@ class Agent:
         # Check if goal achieved (gained knowledge)
         if results["knowledge_gained"] > 0 and self._goal_system and self.state.current_goal_id:
             current_goal = self._goal_system.get_goal(self.state.current_goal_id)
-            if current_goal:
-                # Update goal progress based on knowledge gained
-                progress = min(1.0, results["knowledge_gained"] / 10.0)  # Scale to [0, 1]
+            if current_goal and self.state.latent_state is not None:
+                # Update goal progress based on state
                 self._goal_system.update_goal_progress(
                     self.state.current_goal_id,
                     self.state.latent_state,
-                    progress
                 )
                 
                 # Check if goal completed
@@ -711,6 +1027,39 @@ class Agent:
                     goal_achieved = True
                     # Clear current goal to allow new goal generation
                     self.state.current_goal_id = None
+
+        # If we gained knowledge, write it into memory and trigger learning update
+        if results["knowledge_gained"] > 0:
+            intrinsic_reward = self._compute_exploration_signal()
+            total_reward = float(results["knowledge_gained"] + intrinsic_reward)
+
+            if self._memory:
+                # Persist semantic/long-term memory
+                content_summary = str(results["sources"])[:500]
+                try:
+                    await self._memory.store_semantic(
+                        content=f"Topic: {topic}\nSources: {', '.join(results['sources'].keys())}\nSummary: {content_summary}",
+                        metadata={"source": "knowledge_exploration", "topic": topic},
+                    )
+                except Exception as e:
+                    print(f"[Agent {self.state.id}] Failed to store semantic memory: {e}")
+
+                # Create a simple transition for episodic/replay
+                transition = {
+                    "state": self.state.latent_state.detach().cpu() if hasattr(self.state.latent_state, "detach") else self.state.latent_state,
+                    "action": torch.zeros(self.config.get("action_dim", 64)),
+                    "reward": total_reward,
+                    "next_state": self.state.latent_state.detach().cpu() if hasattr(self.state.latent_state, "detach") else self.state.latent_state,
+                    "done": False,
+                    "goal": topic,
+                    "info": {
+                        "sources": list(results["sources"].keys()),
+                        "knowledge_gained": results["knowledge_gained"],
+                        "intrinsic_reward": intrinsic_reward,
+                    },
+                }
+                # Learning step (stores transition + optional network update)
+                self.learn(transition)
         
         return {
             "type": "knowledge_exploration",
@@ -724,34 +1073,88 @@ class Agent:
         """
         Sample a topic from the knowledge frontier.
         
-        Agent decides what it's curious about based on memory gaps.
+        Agent decides what it's curious about based on:
+        1. Current location context (POIs, landmarks, features nearby)
+        2. Recent topics explored (memory)
+        3. Generic Earth-related domains (fallback)
         """
-        # Query semantic memory for topics with low coverage
-        if self._memory:
-            recent_topics = await self._memory.query_semantic(
-                query="recent topics explored",
-                k=10
-            )
-            
-            # If we have memory, explore related but novel topics
-            if recent_topics:
-                # Use Ollama to generate related topic
-                last_topic = recent_topics[0].get("metadata", {}).get("topic", "science")
-                prompt = f"Given the topic '{last_topic}', suggest one related but novel topic to explore. Reply with just the topic name, no explanation."
-                
-                try:
-                    response = await self.query_ollama(prompt, model="llama2")
-                    return response.get("response", "").strip()
-                except:
-                    pass
+        # FIRST: Use actual location to drive curiosity
+        # Query nearby features to find what's interesting around the agent
+        # Note: Earthlink position stored separately, not in state.location
+        lat = self.get_latitude()
+        lon = self.get_longitude()
         
-        # Fallback: sample from predefined exploration domains
+        if lat is not None and lon is not None:
+            
+            try:
+                # Import here to avoid circular dependency
+                from knowledge.geo import GeoSource
+                
+                # Get location context (nearby POIs, regions, features)
+                geo = GeoSource()
+                context = await geo.get_location_context(lat, lon, radius_meters=5000)
+                
+                # Extract interesting topics from location
+                topics = []
+                
+                # Named features (landmarks, POIs)
+                for feature in context.get("nearby_features", []):
+                    name = feature.get("name")
+                    if name and len(name) > 3:  # Skip abbreviations
+                        topics.append(name)
+                
+                # Containing regions (cities, countries)
+                for region in context.get("containing_regions", []):
+                    name = region.get("name")
+                    if name and len(name) > 3:
+                        topics.append(name)
+                
+                # Nearby place names
+                for place in context.get("nearby_places", []):
+                    name = place.get("name")
+                    if name and len(name) > 3:
+                        topics.append(name)
+                
+                # If we found location-based topics, use them!
+                if topics:
+                    print(f"[Agent {self.state.id}] Location-based topics: {topics[:5]}")
+                    return np.random.choice(topics)
+            except Exception as e:
+                print(f"[Agent {self.state.id}] Failed to get location context for topic generation: {e}")
+        
+        # SECOND: Try to query semantic memory for topics with low coverage
+        if self._memory and hasattr(self._memory, 'query_semantic'):
+            try:
+                recent_topics = await self._memory.query_semantic(
+                    query="recent topics explored",
+                    k=10
+                )
+                
+                # If we have memory, explore related but novel topics
+                if recent_topics:
+                    # Use Ollama to generate related topic
+                    last_topic = recent_topics[0].get("metadata", {}).get("topic", "science")
+                    prompt = f"Given the topic '{last_topic}', suggest one related but novel topic to explore. Reply with just the topic name, no explanation."
+                    
+                    try:
+                        response = await self.query_ollama(prompt, model="llama2")
+                        return response.get("response", "").strip()
+                    except:
+                        pass
+            except Exception:
+                pass  # Fall through to default domains
+        
+        # THIRD: Fallback to generic Earth-related exploration domains
+        # (Only if location and memory queries both failed)
         domains = [
-            "Mars geology", "ocean ecosystems", "quantum mechanics",
-            "ancient civilizations", "machine learning", "neuroscience",
-            "climate science", "space exploration", "renewable energy",
-            "artificial intelligence", "human cognition", "evolutionary biology",
+            "ocean ecosystems", "rainforest biodiversity", "mountain formation",
+            "ancient civilizations", "climate patterns", "tectonic plates",
+            "coastal erosion", "urban development", "agricultural practices",
+            "water cycles", "wildlife migration", "desert ecosystems",
+            "polar ice caps", "river systems", "volcanic activity",
+            "human geography", "cultural diversity", "natural resources",
         ]
+        print(f"[Agent {self.state.id}] Using fallback generic topic (location query failed)")
         return np.random.choice(domains)
 
     def _get_current_observation(self) -> dict[str, Any]:
@@ -1024,9 +1427,386 @@ class Agent:
             self._curiosity.load_state_dict(checkpoint["curiosity_state_dict"])
         if self._goal_system and "goal_system_state" in checkpoint:
             self._goal_system.load_state(checkpoint["goal_system_state"])
-            if "goal_encoder_state_dict" in checkpoint:
-                self._goal_system.goal_encoder.load_state_dict(checkpoint["goal_encoder_state_dict"])
-            if "goal_proposer_state_dict" in checkpoint:
-                self._goal_system.goal_proposer.load_state_dict(checkpoint["goal_proposer_state_dict"])
-            if "goal_value_state_dict" in checkpoint:
-                self._goal_system.goal_value.load_state_dict(checkpoint["goal_value_state_dict"])
+
+    async def _log_knowledge_acquisition(
+        self,
+        topic: str,
+        sources: list[str],
+        knowledge_count: int,
+        content_summary: str,
+        goal_context: str | None = None,
+        curiosity_signal: float | None = None,
+    ) -> None:
+        """Log knowledge acquisition to database with full context (WHAT, WHEN, WHY, WHERE, QUALITY)."""
+        from db.database import async_session_maker
+        from sqlalchemy import text
+        import traceback
+        
+        try:
+            async with async_session_maker() as db:
+                query = text("""
+                    INSERT INTO knowledge_acquisition_log 
+                    (agent_id, source, topic, content_summary, knowledge_count, 
+                     goal_context, curiosity_signal, lat, lon, agent_state, metadata)
+                    VALUES (:agent_id, :source, :topic, :content_summary, :knowledge_count,
+                            :goal_context, :curiosity_signal, :lat, :lon, :agent_state, :metadata)
+                """)
+                
+                # Get current position
+                lat = self.latitude
+                lon = self.longitude
+                
+                await db.execute(query, {
+                    "agent_id": str(self.state.id),
+                    "source": ", ".join(sources),
+                    "topic": topic,
+                    "content_summary": content_summary,
+                    "knowledge_count": knowledge_count,
+                    "goal_context": goal_context,
+                    "curiosity_signal": curiosity_signal,
+                    "lat": lat,
+                    "lon": lon,
+                    "agent_state": self.state.lifecycle.value,
+                    "metadata": "{}"
+                })
+                await db.commit()
+        except Exception as e:
+            # Make error visible - raise it so runner can catch and log
+            error_msg = f"Failed to log knowledge acquisition for agent {self.state.id}: {e}\n{traceback.format_exc()}"
+            raise RuntimeError(error_msg)
+
+    # -------------------------------------------------------------------------
+    # Spatial Movement & Navigation (15.6M OSM Features)
+    # -------------------------------------------------------------------------
+
+    async def move_to(self, lat: float, lon: float, altitude: float = 0.0) -> dict[str, Any]:
+        """
+        Move agent to a specific location in Earthlink.
+        
+        Args:
+            lat: Target latitude (-90 to 90)
+            lon: Target longitude (-180 to 180)
+            altitude: Target altitude in meters (default 0)
+            
+        Returns:
+            Movement result with new location and nearby context
+        """
+        # Validate coordinates
+        lat = max(-90.0, min(90.0, lat))
+        lon = max(-180.0, min(180.0, lon))
+        
+        # Store old position
+        old_lat, old_lon = self.latitude, self.longitude
+        
+        # Update position
+        self.set_earthlink_position(lat, lon, altitude)
+        
+        # Calculate distance moved
+        distance_km = self._haversine_distance(old_lat, old_lon, lat, lon)
+        
+        # Query geo context at new location
+        context = await self.query_geo(lat, lon, radius_meters=1000)
+        
+        # Update metrics
+        self.state.metrics.total_steps += 1
+        
+        return {
+            "type": "movement",
+            "old_position": {"lat": old_lat, "lon": old_lon},
+            "new_position": {"lat": lat, "lon": lon, "altitude": altitude},
+            "distance_km": distance_km,
+            "nearby_features": len(context.get("nearby_features", [])),
+            "containing_regions": [r.get("name") for r in context.get("containing_regions", [])[:3]],
+        }
+
+    async def explore_random_location(self, region_bounds: dict[str, float] | None = None) -> dict[str, Any]:
+        """
+        Move to a random location and explore it.
+        
+        Args:
+            region_bounds: Optional bounds {"lat_min", "lat_max", "lon_min", "lon_max"}
+                          Default: Australia bounds (OSM data coverage)
+                          
+        Returns:
+            Exploration result with movement + knowledge gained
+        """
+        # Default to Australia/Oceania bounds (where we have OSM data)
+        bounds = region_bounds or {
+            "lat_min": -47.0,  # Southern Australia
+            "lat_max": -10.0,  # Northern Australia
+            "lon_min": 110.0,  # Western Australia
+            "lon_max": 180.0,  # Eastern edge of Oceania
+        }
+        
+        # Sample random location
+        target_lat = np.random.uniform(bounds["lat_min"], bounds["lat_max"])
+        target_lon = np.random.uniform(bounds["lon_min"], bounds["lon_max"])
+        
+        # Move to location
+        movement = await self.move_to(target_lat, target_lon)
+        
+        # Explore location (geo + knowledge)
+        exploration = await self.explore_location(target_lat, target_lon)
+        
+        return {
+            "type": "random_exploration",
+            "movement": movement,
+            "exploration": exploration,
+        }
+
+    async def navigate_to_poi(self, poi_name: str, poi_type: str | None = None) -> dict[str, Any]:
+        """
+        Navigate to a specific point of interest by name.
+        
+        Args:
+            poi_name: Name of the POI (e.g., "Sydney Opera House")
+            poi_type: Optional filter by type (e.g., "building", "place")
+            
+        Returns:
+            Navigation result with path and final location
+        """
+        from knowledge import get_geo_source
+        from db.database import async_session_maker
+        from sqlalchemy import text
+        
+        # Search for POI in database
+        async with async_session_maker() as db:
+            query_str = """
+                SELECT osm_id, name, poi_type, 
+                       ST_Y(geom::geometry) as lat, 
+                       ST_X(geom::geometry) as lon
+                FROM pois 
+                WHERE name ILIKE :name
+            """
+            if poi_type:
+                query_str += " AND poi_type = :poi_type"
+            query_str += " LIMIT 1"
+            
+            params = {"name": f"%{poi_name}%"}
+            if poi_type:
+                params["poi_type"] = poi_type
+                
+            result = await db.execute(text(query_str), params)
+            poi = result.fetchone()
+        
+        if not poi:
+            return {
+                "type": "navigation",
+                "success": False,
+                "error": f"POI '{poi_name}' not found",
+            }
+        
+        # Move to POI
+        target_lat, target_lon = poi.lat, poi.lon
+        movement = await self.move_to(target_lat, target_lon)
+        
+        # Explore the POI location
+        exploration = await self.explore_location(target_lat, target_lon)
+        
+        return {
+            "type": "navigation",
+            "success": True,
+            "poi": {
+                "name": poi.name,
+                "type": poi.poi_type,
+                "lat": target_lat,
+                "lon": target_lon,
+            },
+            "movement": movement,
+            "exploration": exploration,
+        }
+
+    async def find_nearest(
+        self,
+        feature_type: str,
+        max_distance_km: float = 10.0,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Find nearest features of a specific type.
+        
+        Args:
+            feature_type: Type to search for (buildings, roads, pois, water, landcover, places)
+            max_distance_km: Maximum search distance
+            limit: Max results to return
+            
+        Returns:
+            List of nearby features with distance and details
+        """
+        from db.database import async_session_maker
+        from sqlalchemy import text
+        
+        # Map feature type to table
+        table_map = {
+            "building": "buildings",
+            "buildings": "buildings",
+            "road": "roads",
+            "roads": "roads",
+            "poi": "pois",
+            "pois": "pois",
+            "place": "places",
+            "places": "places",
+            "water": "water_features",
+            "landcover": "land_cover",
+            "land": "land_cover",
+        }
+        
+        table = table_map.get(feature_type.lower())
+        if not table:
+            return []
+        
+        # Determine geometry column name
+        geom_col = "footprint" if table == "buildings" else "geom"
+        
+        # Query nearest features
+        async with async_session_maker() as db:
+            query = text(f"""
+                SELECT 
+                    name,
+                    ST_Y(ST_Centroid({geom_col}::geometry)) as lat,
+                    ST_X(ST_Centroid({geom_col}::geometry)) as lon,
+                    ST_Distance({geom_col}::geography, ST_Point(:lon, :lat)::geography) as distance_m
+                FROM {table}
+                WHERE ST_DWithin(
+                    {geom_col}::geography,
+                    ST_Point(:lon, :lat)::geography,
+                    :max_distance_m
+                )
+                ORDER BY distance_m
+                LIMIT :limit
+            """)
+            
+            result = await db.execute(query, {
+                "lat": self.latitude,
+                "lon": self.longitude,
+                "max_distance_m": max_distance_km * 1000,
+                "limit": limit,
+            })
+            features = result.fetchall()
+        
+        return [
+            {
+                "name": f.name or "Unnamed",
+                "lat": float(f.lat),
+                "lon": float(f.lon),
+                "distance_m": float(f.distance_m),
+                "distance_km": float(f.distance_m) / 1000,
+            }
+            for f in features
+        ]
+
+    async def plan_exploration_route(
+        self,
+        num_waypoints: int = 5,
+        region_bounds: dict[str, float] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Plan a multi-waypoint exploration route.
+        
+        Args:
+            num_waypoints: Number of waypoints to visit
+            region_bounds: Optional bounds for route planning
+            
+        Returns:
+            List of waypoints with planned route
+        """
+        # Default to Australia/Oceania bounds
+        bounds = region_bounds or {
+            "lat_min": -47.0,
+            "lat_max": -10.0,
+            "lon_min": 110.0,
+            "lon_max": 180.0,
+        }
+        
+        waypoints = []
+        current_lat, current_lon = self.latitude, self.longitude
+        
+        for i in range(num_waypoints):
+            # Sample next waypoint (bias towards exploration frontier)
+            if i == 0:
+                # First waypoint: random in bounds
+                next_lat = np.random.uniform(bounds["lat_min"], bounds["lat_max"])
+                next_lon = np.random.uniform(bounds["lon_min"], bounds["lon_max"])
+            else:
+                # Subsequent waypoints: random walk from current
+                step_size_km = 50.0  # 50km steps
+                bearing = np.random.uniform(0, 360)
+                next_lat, next_lon = self._destination_point(
+                    current_lat, current_lon, step_size_km, bearing
+                )
+                
+                # Clip to bounds
+                next_lat = np.clip(next_lat, bounds["lat_min"], bounds["lat_max"])
+                next_lon = np.clip(next_lon, bounds["lon_min"], bounds["lon_max"])
+            
+            distance = self._haversine_distance(current_lat, current_lon, next_lat, next_lon)
+            
+            waypoints.append({
+                "index": i,
+                "lat": next_lat,
+                "lon": next_lon,
+                "distance_from_previous_km": distance,
+            })
+            
+            current_lat, current_lon = next_lat, next_lon
+        
+        return waypoints
+
+    def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """
+        Calculate great-circle distance between two points (Haversine formula).
+        
+        Returns:
+            Distance in kilometers
+        """
+        from math import radians, sin, cos, sqrt, atan2
+        
+        R = 6371  # Earth radius in km
+        
+        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        
+        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+        c = 2 * atan2(sqrt(a), sqrt(1-a))
+        
+        return R * c
+
+    def _destination_point(
+        self,
+        lat: float,
+        lon: float,
+        distance_km: float,
+        bearing_deg: float,
+    ) -> tuple[float, float]:
+        """
+        Calculate destination point given distance and bearing.
+        
+        Args:
+            lat: Starting latitude
+            lon: Starting longitude
+            distance_km: Distance to travel (km)
+            bearing_deg: Bearing in degrees (0-360, 0=North)
+            
+        Returns:
+            (dest_lat, dest_lon) tuple
+        """
+        from math import radians, sin, cos, asin, atan2, degrees
+        
+        R = 6371  # Earth radius in km
+        
+        lat1 = radians(lat)
+        lon1 = radians(lon)
+        bearing = radians(bearing_deg)
+        
+        lat2 = asin(
+            sin(lat1) * cos(distance_km / R) +
+            cos(lat1) * sin(distance_km / R) * cos(bearing)
+        )
+        
+        lon2 = lon1 + atan2(
+            sin(bearing) * sin(distance_km / R) * cos(lat1),
+            cos(distance_km / R) - sin(lat1) * sin(lat2)
+        )
+        
+        return degrees(lat2), degrees(lon2)
