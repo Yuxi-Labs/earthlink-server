@@ -31,7 +31,7 @@ class WikipediaSource:
     def __init__(
         self,
         language: str = "en",
-        user_agent: str = "Earthlink/1.0 (research project)",
+        user_agent: str = "EarthlinkBot/1.0 (https://github.com/Yuxi-Labs/earthlink; research@yuxilabs.com) python-httpx/0.28",
     ):
         self.language = language
         self.base_url = f"https://{language}.wikipedia.org/w/api.php"
