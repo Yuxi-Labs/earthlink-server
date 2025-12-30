@@ -27,7 +27,7 @@ async def demo_location_awareness():
     # Create agent
     print("Creating agent...")
     agent_id = uuid4()
-    agent_ref = Agent.remote(agent_id=agent_id, name="Explorer")
+    agent_ref = Agent.remote(agent_id=agent_id, name="A1")
     
     print(f"Agent ID: {agent_id}")
     print()

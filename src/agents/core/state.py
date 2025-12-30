@@ -11,14 +11,32 @@ import torch
 
 
 class AgentLifecycle(str, Enum):
-    """Agent lifecycle states."""
+    """Agent developmental lifecycle stages - internal tracking only (NOT UI-facing)."""
 
     SPAWNED = "spawned"
-    TRAINING = "training"
+    ORIENTED = "oriented"
+    EXPLORES = "explores"
+    LEARNS = "learns"
+    ADAPTS = "adapts"
+    DIFFERENTIATES = "differentiates"
+    ACTS = "acts"
+    TRANSFORMS = "transforms"
+    EXPIRES = "expires"
+    ARCHIVED = "archived"
+
+
+class AgentStatus(str, Enum):
+    """Agent operational status (UI-facing)."""
+
+    IDLE = "idle"
     EXPLORING = "exploring"
-    TESTING = "testing"
-    DEPLOYED = "deployed"
-    SUSPENDED = "suspended"
+    LEARNING = "learning"
+    INTERACTING = "interacting"
+    EXECUTING = "executing"
+    ADAPTING = "adapting"
+    OVERLOADED = "overloaded"
+    CORRUPTED = "corrupted"
+    RETIRED = "retired"
 
 
 @dataclass
@@ -55,6 +73,7 @@ class AgentMetrics:
     novelty_encountered: float = 0.0
     training_steps: int = 0
     last_training_loss: float = 0.0
+    exploration_depth: float = 0.0  # Cumulative distance traveled in 1000km units
 
 
 @dataclass
@@ -64,6 +83,7 @@ class AgentState:
     id: UUID = field(default_factory=uuid4)
     name: str = ""
     lifecycle: AgentLifecycle = AgentLifecycle.SPAWNED
+    status: AgentStatus = AgentStatus.IDLE
     location: Coordinates = field(default_factory=Coordinates)
     metrics: AgentMetrics = field(default_factory=AgentMetrics)
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -84,6 +104,7 @@ class AgentState:
             "id": str(self.id),
             "name": self.name,
             "lifecycle": self.lifecycle.value,
+            "status": self.status.value,
             "location": {"x": self.location.x, "y": self.location.y, "z": self.location.z},
             "metrics": {
                 "knowledge_acquired": self.metrics.knowledge_acquired,

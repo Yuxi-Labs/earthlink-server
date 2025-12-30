@@ -12,6 +12,7 @@ class EventType(Enum):
 
     # Agent lifecycle
     AGENT_SPAWNED = auto()
+    AGENT_UPDATED = auto()  # Status/lifecycle changes
     AGENT_STARTED = auto()
     AGENT_STOPPED = auto()
     AGENT_DESTROYED = auto()

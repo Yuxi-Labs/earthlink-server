@@ -13,8 +13,6 @@ from src.api.event_bridge import init_event_bridge, EventBridge
 from src.api.messaging import router as messaging_router
 from src.api.geo import router as geo_router
 from src.api.analytics import router as analytics_router
-from src.api.readiness import router as readiness_router
-from src.api.target_worlds import router as target_worlds_router
 from src.agents.core import MessageRouter, init_message_router, get_message_router
 from src.config import settings
 from src.db.database import init_db
@@ -72,6 +70,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize message router with simulation's event bus
     _message_router = init_message_router(_simulation_runner.event_bus)
 
+    # Auto-start simulation
+    asyncio.create_task(_simulation_runner.run())
+
     yield
 
     # Shutdown
@@ -124,8 +125,6 @@ app.include_router(api_router, prefix="/api/v1")
 app.include_router(messaging_router, prefix="/api/v1/messaging", tags=["messaging"])
 app.include_router(geo_router, prefix="/geo", tags=["geo"])
 app.include_router(analytics_router, prefix="/api/v1", tags=["analytics"])
-app.include_router(readiness_router, tags=["readiness"])
-app.include_router(target_worlds_router, tags=["target_worlds"])
 app.include_router(commands_router, prefix="/api/v1/commands", tags=["commands"])
 app.include_router(episodes_router, prefix="/api/v1/episodes", tags=["episodes"])
 app.include_router(snapshots_router, prefix="/api/v1/snapshots", tags=["snapshots"])

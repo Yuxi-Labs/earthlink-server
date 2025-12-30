@@ -19,8 +19,15 @@ class Agent(Base):
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    state: Mapped[str] = mapped_column(String(50), default="spawned")
-    # States: spawned, training, specializing, testing, deployed
+    
+    # Lifecycle & Status (dual-dimension model per AGENT-LIFECYCLE.md)
+    lifecycle: Mapped[str] = mapped_column(String(50), default="spawned")
+    # Lifecycle (developmental stage): spawned, oriented, explores, learns, adapts, differentiates, acts, transforms, expires, archived
+    status: Mapped[str] = mapped_column(String(50), default="idle")
+    # Status (operational state): idle, exploring, learning, interacting, executing, adapting, overloaded, corrupted, retired
+    
+    # Legacy field - kept for backward compatibility, can be removed after migration
+    state: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Metrics
     knowledge_acquired: Mapped[float] = mapped_column(Float, default=0.0)

@@ -38,7 +38,7 @@ async def test_autonomous_exploration():
     # Create agent
     agent = Agent(
         agent_id="test_explorer_001",
-        name="Explorer",
+        name="A1",
         config={
             "exploration": {
                 "curiosity_weight": 0.8,

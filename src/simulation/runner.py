@@ -9,7 +9,10 @@ from typing import Any
 from uuid import UUID
 
 import ray
+from sqlalchemy import select
 
+from src.db.database import async_session_maker
+from src.db.models import Agent as AgentModel
 from .events import Event, EventBus, EventType
 from .world import World, WorldRegistry
 from .episode import EpisodeManager
@@ -36,6 +39,8 @@ class SimulationConfig:
 
     # Agents
     max_agents: int = 100
+    target_agents: int = 5  # Desired steady-state population
+    spawn_interval_seconds: float = 5.0  # How often to check spawn conditions
     agent_config: dict[str, Any] = field(default_factory=dict)
 
     # Learning
@@ -82,6 +87,9 @@ class SimulationRunner:
         self._agents: dict[UUID, ray.ObjectRef] = {}
         self._agent_worlds: dict[UUID, str] = {}  # agent_id -> world_id
 
+        # Background tasks
+        self._spawn_task: asyncio.Task | None = None
+
         # Statistics
         self._total_steps = 0
         self._episode_rewards: dict[UUID, list[float]] = defaultdict(list)
@@ -111,9 +119,42 @@ class SimulationRunner:
                 ray.init(ignore_reinit_error=True)
                 self._ray_initialized = True
 
+        # Load persisted agents from database
+        await self._load_persisted_agents()
+
         self.event_bus.publish(Event(
             event_type=EventType.SIMULATION_STARTED,
         ))
+
+    async def _load_persisted_agents(self) -> None:
+        """Load agents from database and recreate Ray actors."""
+        async with async_session_maker() as db:
+            result = await db.execute(
+                select(AgentModel).where(AgentModel.state != "destroyed")
+            )
+            db_agents = result.scalars().all()
+
+        for db_agent in db_agents:
+            try:
+                # Recreate Ray actor
+                agent_ref = Agent.remote(name=db_agent.name, config=db_agent.config or {})
+                
+                # Verify agent ID matches
+                ray_agent_id = UUID(await agent_ref.get_id.remote())
+                
+                # Store reference
+                self._agents[db_agent.id] = agent_ref
+                
+                # Initialize components
+                await agent_ref.initialize_components.remote(
+                    memory_config=db_agent.config.get("memory", {}) if db_agent.config else {},
+                    policy_config=db_agent.config.get("policy", {}) if db_agent.config else {},
+                )
+                
+                print(f"Restored agent {db_agent.name} (ID: {db_agent.id})")
+                
+            except Exception as e:
+                print(f"Failed to restore agent {db_agent.name}: {e}")
 
     async def shutdown(self) -> None:
         """Shutdown simulation and cleanup."""
@@ -149,6 +190,7 @@ class SimulationRunner:
     ) -> UUID:
         """Spawn a new agent."""
         from ..agents.core import Agent
+        import random
 
         # Merge with default config
         agent_config = {**self.config.agent_config, **(config or {})}
@@ -182,6 +224,30 @@ class SimulationRunner:
             memory_config=agent_config.get("memory", {}),
             policy_config=agent_config.get("policy", {}),
         )
+        
+        # Spawn agent at random location within VW geographic bounds
+        # Query database for actual extent, or use configured default
+        spawn_bounds = await self._get_spawn_bounds()
+        spawn_lat = random.uniform(spawn_bounds["min_lat"], spawn_bounds["max_lat"])
+        spawn_lon = random.uniform(spawn_bounds["min_lon"], spawn_bounds["max_lon"])
+        await agent_ref.set_earthlink_position.remote(spawn_lat, spawn_lon, 0.0)
+        print(f"Spawned agent {name} at ({spawn_lat:.4f}, {spawn_lon:.4f})")
+
+        # Persist agent to database
+        try:
+            async with async_session_maker() as db:
+                db_agent = AgentModel(
+                    id=agent_id,
+                    name=name,
+                    state="spawned",
+                    config=agent_config,
+                )
+                db.add(db_agent)
+                await db.commit()
+                print(f"Persisted agent {name} (ID: {agent_id}) to database")
+        except Exception as e:
+            print(f"Failed to persist agent {name} to database: {e}")
+            # Continue anyway - agent exists in Ray
 
         self.event_bus.publish(Event(
             event_type=EventType.AGENT_SPAWNED,
@@ -205,9 +271,35 @@ class SimulationRunner:
         except Exception:
             pass
 
+        # Update database state
+        try:
+            async with async_session_maker() as db:
+                result = await db.execute(
+                    select(AgentModel).where(AgentModel.id == agent_id)
+                )
+                db_agent = result.scalar_one_or_none()
+                if db_agent:
+                    db_agent.state = "destroyed"
+                    db_agent.updated_at = datetime.utcnow()
+                    await db.commit()
+        except Exception as e:
+            print(f"Failed to update agent state in database: {e}")
+
         # Remove from tracking
         del self._agents[agent_id]
         self._agent_worlds.pop(agent_id, None)
+
+        # Remove from database
+        from ..db.database import async_session_maker
+        from ..db.models import Agent as AgentModel
+        
+        async with async_session_maker() as db:
+            from sqlalchemy import select
+            result = await db.execute(select(AgentModel).where(AgentModel.id == agent_id))
+            db_agent = result.scalar_one_or_none()
+            if db_agent:
+                await db.delete(db_agent)
+                await db.commit()
 
         self.event_bus.publish(Event(
             event_type=EventType.AGENT_DESTROYED,
@@ -261,7 +353,9 @@ class SimulationRunner:
     async def list_agents(self) -> list[dict[str, Any]]:
         """List all agents with their states."""
         states = []
-        for agent_id, agent_ref in self._agents.items():
+        # Create a copy of items to avoid "dictionary changed size during iteration"
+        agent_items = list(self._agents.items())
+        for agent_id, agent_ref in agent_items:
             state = await agent_ref.get_state.remote()
             states.append(state)
         return states
@@ -305,6 +399,10 @@ class SimulationRunner:
 
         self.state = SimulationState.RUNNING
 
+        # Start autonomous spawn manager
+        if self._spawn_task is None or self._spawn_task.done():
+            self._spawn_task = asyncio.create_task(self._spawn_manager())
+
         while self.state == SimulationState.RUNNING:
             start_time = asyncio.get_event_loop().time()
 
@@ -326,23 +424,26 @@ class SimulationRunner:
 
         self.state = SimulationState.IDLE
 
+        # Stop spawn manager
+        if self._spawn_task:
+            self._spawn_task.cancel()
+            try:
+                await self._spawn_task
+            except asyncio.CancelledError:
+                pass
+
     async def _step(self) -> None:
         """Execute one simulation step for all agents."""
         self._total_steps += 1
 
-        # Gather all agent-world pairs
+        # All agents exist in Earthlink (the VW), so just step them
         step_tasks = []
-
         for agent_id, agent_ref in self._agents.items():
-            world_id = self._agent_worlds.get(agent_id)
-            if world_id:
-                world = self.world_registry.get_world(world_id)
-                if world:
-                    step_tasks.append(self._agent_step(agent_id, agent_ref, world))
+            step_tasks.append(self._agent_autonomous_step(agent_id, agent_ref))
 
         # Run all steps concurrently
         if step_tasks:
-            await asyncio.gather(*step_tasks)
+            await asyncio.gather(*step_tasks, return_exceptions=True)
 
         # Periodic checkpointing
         if (
@@ -357,6 +458,99 @@ class SimulationRunner:
             and self._total_steps % self.config.log_every_n_steps == 0
         ):
             self._log_stats()
+
+    async def _spawn_manager(self) -> None:
+        """Background loop to maintain target agent population."""
+        while self.state == SimulationState.RUNNING:
+            try:
+                await self._maybe_spawn_agents()
+            except Exception as e:
+                print(f"[SPAWN] spawn manager error: {e}")
+            await asyncio.sleep(self.config.spawn_interval_seconds)
+
+    async def _maybe_spawn_agents(self) -> None:
+        """Spawn agents until target population is reached (respecting max_agents)."""
+        current = len(self._agents)
+        target = min(self.config.target_agents, self.config.max_agents)
+        if current >= target:
+            return
+
+        to_spawn = target - current
+
+        for _ in range(to_spawn):
+            # Defensive check against race conditions
+            if len(self._agents) >= self.config.max_agents:
+                break
+
+            name = f"A{len(self._agents) + 1}"
+            agent_id = await self.spawn_agent(name=name, config=self.config.agent_config)
+
+            # Set agent status to idle
+            agent_ref = self._agents.get(agent_id)
+            if agent_ref:
+                from src.agents.core import AgentStatus
+                try:
+                    await agent_ref.set_status.remote(AgentStatus.IDLE)
+                except Exception:
+                    pass
+
+    async def _agent_autonomous_step(
+        self,
+        agent_id: UUID,
+        agent_ref: ray.ObjectRef,
+    ) -> None:
+        """
+        Run one autonomous step for an agent in Earthlink.
+        
+        Agent autonomously decides whether to:
+        - Explore (move to new location in Earthlink)
+        - Learn (query knowledge sources)
+        - Interact (with environment/data at current location)
+        """
+        try:
+            # Agent makes autonomous decision about what to do
+            from src.agents.core import AgentStatus
+            
+            # Set status to exploring
+            await agent_ref.set_status.remote(AgentStatus.EXPLORING)
+            
+            # Agent decides and executes action
+            action = await agent_ref.autonomous_step.remote()
+            
+            # If agent moved, update its position
+            if action and action.get("type") == "move":
+                new_pos = action.get("position")
+                if new_pos:
+                    lat, lon, alt = new_pos
+                    await agent_ref.set_earthlink_position.remote(lat, lon, alt)
+                    
+            # Publish action event
+            self.event_bus.publish(Event(
+                event_type=EventType.AGENT_ACTION,
+                source_agent_id=agent_id,
+                data={"action": action},
+            ))
+            
+            # If knowledge was gained, publish learning event
+            if action and action.get("knowledge_gained", 0) > 0:
+                await agent_ref.set_status.remote(AgentStatus.LEARNING)
+                self.event_bus.publish(Event(
+                    event_type=EventType.AGENT_LEARNING,
+                    source_agent_id=agent_id,
+                    data={
+                        "knowledge_gained": action.get("knowledge_gained"),
+                        "topic": action.get("topic"),
+                    },
+                ))
+            
+        except Exception as e:
+            print(f"[STEP] Agent {agent_id} step error: {e}")
+            # Set to idle on error
+            try:
+                from src.agents.core import AgentStatus
+                await agent_ref.set_status.remote(AgentStatus.IDLE)
+            except:
+                pass
 
     async def _agent_step(
         self,
@@ -564,4 +758,51 @@ class SimulationRunner:
         return {
             "enabled": True,
             **self._cluster_manager.get_stats(),
+        }
+    
+    async def _get_spawn_bounds(self) -> dict[str, float]:
+        """
+        Get geographic bounds for agent spawning.
+        
+        Queries the database for actual geographic extent of loaded OSM data.
+        Falls back to configured default if database query fails.
+        
+        Returns:
+            Dict with min_lat, max_lat, min_lon, max_lon
+        """
+        try:
+            # Query database for actual geographic extent
+            from src.db.database import async_session_maker
+            from sqlalchemy import text
+            
+            async with async_session_maker() as db:
+                # Get bounding box of all features in osm_features table
+                result = await db.execute(text("""
+                    SELECT 
+                        ST_YMin(ST_Extent(geom)) as min_lat,
+                        ST_YMax(ST_Extent(geom)) as max_lat,
+                        ST_XMin(ST_Extent(geom)) as min_lon,
+                        ST_XMax(ST_Extent(geom)) as max_lon
+                    FROM osm_features
+                    WHERE geom IS NOT NULL
+                    LIMIT 1
+                """))
+                row = result.fetchone()
+                
+                if row and all(v is not None for v in row):
+                    return {
+                        "min_lat": float(row[0]),
+                        "max_lat": float(row[1]),
+                        "min_lon": float(row[2]),
+                        "max_lon": float(row[3]),
+                    }
+        except Exception as e:
+            print(f"Failed to query spawn bounds from database: {e}")
+        
+        # Fallback to Australia bounds (current default)
+        return {
+            "min_lat": -44.0,
+            "max_lat": -10.0,
+            "min_lon": 113.0,
+            "max_lon": 154.0,
         }

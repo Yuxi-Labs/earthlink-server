@@ -27,6 +27,7 @@ class AgentResponse(BaseModel):
     id: str
     name: str
     lifecycle: str
+    status: str | None = None
     target_world: str | None
     metrics: dict[str, Any]
 
@@ -83,7 +84,8 @@ async def create_agent(
     return {
         "id": str(agent_id),
         "name": agent.name,
-        "lifecycle": "TRAINING",
+        "lifecycle": "spawned",
+        "status": "idle",
         "placement_group": agent.placement_group,
         "message": "Agent spawned successfully",
     }

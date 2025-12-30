@@ -24,6 +24,7 @@ class EventBridge:
         return {
             # Agent lifecycle
             EventType.AGENT_SPAWNED: "agent.spawned",
+            EventType.AGENT_UPDATED: "agent.updated",
             EventType.AGENT_STARTED: "agent.started",
             EventType.AGENT_STOPPED: "agent.stopped",
             EventType.AGENT_DESTROYED: "agent.destroyed",

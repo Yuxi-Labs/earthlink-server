@@ -21,7 +21,7 @@ async def test_agent_knowledge_methods():
         
         # Create agent instance (not Ray remote)
         print("  Creating agent...")
-        agent_instance = agent_module.Agent(name="KnowledgeExplorer")
+        agent_instance = agent_module.Agent(name="A1")
         
         # Test Wikipedia
         print("\n  Testing query_wikipedia()...")

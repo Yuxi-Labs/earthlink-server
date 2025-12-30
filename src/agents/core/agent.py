@@ -11,7 +11,7 @@ import ray
 import torch
 
 from .messaging import Mailbox, Message, MessagePriority, MessageType
-from .state import AgentLifecycle, AgentState
+from .state import AgentLifecycle, AgentState, AgentStatus
 
 
 @ray.remote
@@ -86,8 +86,45 @@ class Agent:
 
     def set_lifecycle(self, lifecycle: AgentLifecycle) -> None:
         """Transition agent lifecycle state."""
+        old_lifecycle = self.state.lifecycle
         self.state.lifecycle = lifecycle
         self.state.updated_at = datetime.utcnow()
+        
+        # Broadcast lifecycle change if event_bus available
+        if hasattr(self, 'event_bus') and self.event_bus and old_lifecycle != lifecycle:
+            from src.simulation.events import Event, EventType
+            event = Event(
+                event_type=EventType.AGENT_UPDATED,
+                source_agent_id=self.state.id,
+                data={
+                    "agent_id": str(self.state.id),
+                    "status": self.state.status.value,
+                    "lifecycle": lifecycle.value,
+                    "old_lifecycle": old_lifecycle.value if old_lifecycle else None,
+                }
+            )
+            self.event_bus.publish(event)
+
+    def set_status(self, status: AgentStatus) -> None:
+        """Update agent operational status (UI-facing)."""
+        old_status = self.state.status
+        self.state.status = status
+        self.state.updated_at = datetime.utcnow()
+        
+        # Broadcast status change if event_bus available
+        if hasattr(self, 'event_bus') and self.event_bus and old_status != status:
+            from src.simulation.events import Event, EventType
+            event = Event(
+                event_type=EventType.AGENT_UPDATED,
+                source_agent_id=self.state.id,
+                data={
+                    "agent_id": str(self.state.id),
+                    "status": status.value,
+                    "lifecycle": self.state.lifecycle.value,
+                    "old_status": old_status.value if old_status else None,
+                }
+            )
+            self.event_bus.publish(event)
 
     def set_target_world(self, world: str) -> None:
         """Set target world for specialization/deployment."""
@@ -490,6 +527,57 @@ class Agent:
         self.state.location.y = lon
         self.state.location.z = altitude
     
+    def _calculate_destination(self, lat: float, lon: float, distance_km: float, bearing_degrees: float) -> tuple[float, float]:
+        """
+        Calculate destination point given start point, distance, and bearing.
+        Uses the haversine formula for great circle navigation.
+        
+        Args:
+            lat: Starting latitude in degrees
+            lon: Starting longitude in degrees
+            distance_km: Distance to travel in kilometers
+            bearing_degrees: Bearing in degrees (0-360, 0=North, 90=East)
+        
+        Returns:
+            (new_lat, new_lon) in degrees
+        """
+        import math
+        
+        # Earth's radius in kilometers
+        R = 6371.0
+        
+        # Convert to radians
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        bearing_rad = math.radians(bearing_degrees)
+        
+        # Angular distance in radians
+        angular_distance = distance_km / R
+        
+        # Calculate new latitude
+        new_lat_rad = math.asin(
+            math.sin(lat_rad) * math.cos(angular_distance) +
+            math.cos(lat_rad) * math.sin(angular_distance) * math.cos(bearing_rad)
+        )
+        
+        # Calculate new longitude
+        new_lon_rad = lon_rad + math.atan2(
+            math.sin(bearing_rad) * math.sin(angular_distance) * math.cos(lat_rad),
+            math.cos(angular_distance) - math.sin(lat_rad) * math.sin(new_lat_rad)
+        )
+        
+        # Convert back to degrees
+        new_lat = math.degrees(new_lat_rad)
+        new_lon = math.degrees(new_lon_rad)
+        
+        # Normalize longitude to -180 to 180
+        new_lon = ((new_lon + 180) % 360) - 180
+        
+        # Clamp latitude to valid range
+        new_lat = max(-90, min(90, new_lat))
+        
+        return new_lat, new_lon
+    
     async def _get_http_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client for Earthlink API."""
         if self._http_client is None:
@@ -787,7 +875,10 @@ class Agent:
         - Novelty (new/unfamiliar states)
         - Expected information gain
         - Current goals
+        - Spatial exploration (movement)
         """
+        import random
+        
         # 1. Check if we should generate new goals
         if self._goal_system and (not self.state.current_goal_id or np.random.random() < 0.1):
             await self._maybe_generate_goal()
@@ -795,16 +886,50 @@ class Agent:
         # 2. Compute curiosity-driven exploration signal
         exploration_signal = self._compute_exploration_signal()
         
-        # 3. Decide on action: knowledge acquisition or policy action
+        # 3. Decide on action type: movement, knowledge acquisition, or policy action
         threshold = self.config.get("exploration_threshold", 0.3)
-        if exploration_signal >= threshold:
+        action_weights = [0.4, 0.4, 0.2]  # [move, learn, policy]
+        action_type = random.choices(["move", "learn", "policy"], weights=action_weights, k=1)[0]
+        
+        if action_type == "move":
+            # Spatial exploration - move to new location
+            loc = self.state.location
+            current_lat = loc.x if loc and loc.x != 0 else -25.0  # Default to Australia
+            current_lon = loc.y if loc and loc.y != 0 else 134.0
+            
+            # Move 1-50km in random direction
+            distance_km = random.uniform(1, 50)
+            bearing = random.uniform(0, 360)
+            new_lat, new_lon = self._calculate_destination(
+                current_lat, current_lon, distance_km, bearing
+            )
+            
+            # Update position
+            self.set_earthlink_position(new_lat, new_lon, 0.0)
+            
+            # Update metrics
+            self.state.metrics.total_steps += 1
+            self.state.metrics.exploration_depth += distance_km / 1000.0
+            
+            # Set status
+            self.set_status(AgentStatus.EXPLORING)
+            
+            action = {
+                "type": "move",
+                "from": (current_lat, current_lon),
+                "to": (new_lat, new_lon),
+                "distance_km": distance_km,
+                "bearing": bearing,
+            }
+            
+        elif action_type == "learn" and exploration_signal >= threshold:
             # High curiosity - acquire knowledge from external world
-            print(f"[Agent {self.state.id}] exploration_signal={exploration_signal:.4f} >= {threshold}, exploring knowledge")
+            self.set_status(AgentStatus.LEARNING)
             action = await self._explore_knowledge(curiosity_signal=exploration_signal)
-            print(f"[Agent {self.state.id}] knowledge exploration returned: {action}")
+            
         else:
             # Low curiosity - execute policy action in environment
-            print(f"[Agent {self.state.id}] exploration_signal={exploration_signal:.4f} < {threshold}, taking policy action")
+            self.set_status(AgentStatus.EXECUTING)
             observation = self._get_current_observation()
             action = self.step(observation)
         
@@ -840,6 +965,7 @@ class Agent:
         
         Returns loss metrics.
         """
+        self.set_status(AgentStatus.LEARNING)
         # Store in episodic memory
         if self._memory:
             self._memory.store_episode(transition)
@@ -1185,7 +1311,7 @@ class Agent:
         # Select action from policy
         if self._policy:
             with torch.no_grad():
-                deterministic = self.state.lifecycle == AgentLifecycle.DEPLOYED
+                deterministic = self.state.lifecycle == AgentLifecycle.ACTS
                 action, log_prob, entropy, value = self._policy.get_action_and_value(
                     policy_input.unsqueeze(0),
                     deterministic=deterministic,
@@ -1383,8 +1509,8 @@ class Agent:
             lr=self.config.get("curiosity_lr", 1e-3),
         )
 
-        # Transition to training
-        self.set_lifecycle(AgentLifecycle.TRAINING)
+        # Transition to learning stage
+        self.set_lifecycle(AgentLifecycle.LEARNS)
 
     # -------------------------------------------------------------------------
     # Serialization
@@ -1504,8 +1630,13 @@ class Agent:
         # Calculate distance moved
         distance_km = self._haversine_distance(old_lat, old_lon, lat, lon)
         
-        # Query geo context at new location
-        context = await self.query_geo(lat, lon, radius_meters=1000)
+        # Query geo context at new location (skip if geo module not available)
+        context = {}
+        try:
+            context = await self.query_geo(lat, lon, radius_meters=1000)
+        except (ImportError, ModuleNotFoundError):
+            # Geo module not available, skip context query
+            pass
         
         # Update metrics
         self.state.metrics.total_steps += 1
@@ -1810,3 +1941,6 @@ class Agent:
         )
         
         return degrees(lat2), degrees(lon2)
+    # -------------------------------------------------------------------------
+    # Autonomous Behavior
+    # -------------------------------------------------------------------------
