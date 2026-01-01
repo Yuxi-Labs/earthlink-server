@@ -97,6 +97,16 @@ class GoalValueNetwork(nn.Module):
         goal_embedding: torch.Tensor,
     ) -> torch.Tensor:
         """Estimate value/achievability of goal from current state."""
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+        if goal_embedding.dim() == 1:
+            goal_embedding = goal_embedding.unsqueeze(0)
+
+        if state.shape[0] == 1 and goal_embedding.shape[0] > 1:
+            state = state.expand(goal_embedding.shape[0], -1)
+        elif goal_embedding.shape[0] == 1 and state.shape[0] > 1:
+            goal_embedding = goal_embedding.expand(state.shape[0], -1)
+
         combined = torch.cat([state, goal_embedding], dim=-1)
         return self.network(combined).squeeze(-1)
 
@@ -157,8 +167,30 @@ class GoalSystem:
     # Goal management
     # -------------------------------------------------------------------------
 
-    def add_goal(self, goal: Goal) -> UUID:
-        """Add a goal to the system."""
+    def add_goal(
+        self,
+        goal: Goal | None = None,
+        *,
+        description: str | None = None,
+        goal_type: GoalType = GoalType.EXPLORATION,
+        priority: float = 0.5,
+        target_state: torch.Tensor | None = None,
+        status: GoalStatus = GoalStatus.PROPOSED,
+        source: str = "self",
+        metadata: dict[str, Any] | None = None,
+    ) -> Goal:
+        """Add a goal to the system (accepts Goal or parameters)."""
+        if goal is None:
+            goal = Goal(
+                description=description or "",
+                goal_type=goal_type,
+                status=status,
+                target_state=target_state,
+                priority=priority,
+                source=source,
+                metadata=metadata or {},
+            )
+
         self._goals[goal.id] = goal
 
         # Generate embedding if target state exists
@@ -171,7 +203,7 @@ class GoalSystem:
                 goal.embedding = embedding
 
         self.stats["goals_added"] += 1
-        return goal.id
+        return goal
 
     def remove_goal(self, goal_id: UUID) -> bool:
         """Remove a goal from the system."""
@@ -193,6 +225,31 @@ class GoalSystem:
     def get_proposed_goals(self) -> list[Goal]:
         """Get proposed (uncommitted) goals."""
         return [g for g in self._goals.values() if g.status == GoalStatus.PROPOSED]
+
+    def update_goal_status(self, goal_id: UUID, status: str | GoalStatus) -> bool:
+        """Update goal status by ID."""
+        goal = self.get_goal(goal_id)
+        if goal is None:
+            return False
+
+        if isinstance(status, str):
+            status = status.lower()
+            if status in {"in_progress", "active"}:
+                goal.status = GoalStatus.IN_PROGRESS
+            elif status in {"proposed"}:
+                goal.status = GoalStatus.PROPOSED
+            elif status in {"suspended"}:
+                goal.status = GoalStatus.SUSPENDED
+            elif status in {"achieved", "done", "complete"}:
+                goal.status = GoalStatus.ACHIEVED
+            elif status in {"abandoned"}:
+                goal.status = GoalStatus.ABANDONED
+            elif status in {"failed"}:
+                goal.status = GoalStatus.FAILED
+        elif isinstance(status, GoalStatus):
+            goal.status = status
+
+        return True
 
     # -------------------------------------------------------------------------
     # Goal formation
@@ -474,15 +531,21 @@ class GoalSystem:
     def update_goal_progress(
         self,
         goal_id: UUID,
-        current_state: torch.Tensor,
+        current_state: torch.Tensor | None = None,
+        progress: float | None = None,
     ) -> float:
         """Update progress toward a goal."""
         goal = self.get_goal(goal_id)
         if goal is None:
             return 0.0
 
+        # Direct progress update
+        if progress is not None:
+            goal.update_progress(progress)
+            return goal.progress
+
         # Check achievement
-        if self.check_achievement(goal_id, current_state):
+        if current_state is not None and self.check_achievement(goal_id, current_state):
             return 1.0
 
         return goal.progress

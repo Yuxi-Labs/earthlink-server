@@ -12,6 +12,8 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - CHROMA_URL=http://chromadb:8000
       - PYTHONPATH=/app/src:/app
+      - RAY_memory_monitor_refresh_ms=0
+      - RESTORE_AGENTS_ON_STARTUP=false
     depends_on:
       db:
         condition: service_healthy
@@ -26,6 +28,7 @@ services:
       - ./scripts:/app/scripts
       - osm_data:/tmp/geofabrik
       - db_backups:/tmp/backups
+    shm_size: "4gb"
     networks:
       - earthlink-net
     deploy:

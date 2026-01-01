@@ -290,12 +290,12 @@ class ActorCritic(nn.Module):
         self,
         states: torch.Tensor,
         actions: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Evaluate actions for PPO update.
         
         Returns:
-            (log_probs, entropy, values)
+            (actions, log_probs, entropy, values)
         """
         action_dist, values = self.forward(states)
 
@@ -306,7 +306,7 @@ class ActorCritic(nn.Module):
             log_probs = log_probs.sum(dim=-1)
             entropy = entropy.sum(dim=-1)
 
-        return log_probs, entropy, values
+        return actions, log_probs, entropy, values
 
     def get_value(self, state: torch.Tensor) -> torch.Tensor:
         """Get state value only."""

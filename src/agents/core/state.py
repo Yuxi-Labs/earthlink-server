@@ -58,22 +58,72 @@ class Coordinates:
 
 @dataclass
 class AgentMetrics:
-    """Agent performance metrics."""
-
-    knowledge_acquired: float = 0.0
-    worlds_explored: int = 0
-    collaboration_score: float = 0.0
-    innovation_index: float = 0.0
-    total_steps: int = 0
-    total_rewards: float = 0.0
-    curiosity_score: float = 0.0
-    topics_explored: int = 0
-    knowledge_sources_queried: int = 0
-    prediction_errors: float = 0.0
-    novelty_encountered: float = 0.0
-    training_steps: int = 0
-    last_training_loss: float = 0.0
-    exploration_depth: float = 0.0  # Cumulative distance traveled in 1000km units
+    """
+    Metrics for agents in Earthlink - grounded in what the system actually does.
+    
+    Organized by stakeholder:
+    - Regular Users: Is my agent exploring and learning?
+    - Researchers: What intelligence patterns are emerging?
+    - Developers: Is the system functioning correctly?
+    """
+    
+    # ===== REGULAR USERS: Agent Activity & Progress =====
+    # What is my agent doing right now and what have they accomplished?
+    
+    distance_traveled_km: float = 0.0  # Total distance moved across Earth's surface
+    unique_locations_visited: int = 0  # Distinct lat/lon grid cells visited (e.g., 10km x 10km)
+    exploration_area_km2: float = 0.0  # Geographic area covered (convex hull)
+    time_alive_hours: float = 0.0  # Hours since spawning
+    
+    knowledge_items_learned: int = 0  # Distinct topics/facts acquired
+    goals_achieved: int = 0  # Completed goals
+    goals_active: int = 0  # Currently pursuing goals
+    
+    agents_encountered: int = 0  # Other agents met (within interaction distance)
+    messages_sent: int = 0  # Messages sent to other agents
+    messages_received: int = 0  # Messages received from other agents
+    
+    current_activity: str = ""  # Human-readable: "Moving north", "Learning about Melbourne"
+    
+    # ===== RESEARCHERS: Cognitive & Behavioral Patterns =====
+    # How is intelligence developing? What behaviors emerge?
+    
+    exploration_entropy: float = 0.0  # Movement randomness (0=fixed path, 1=totally random)
+    knowledge_diversity: float = 0.0  # Breadth of topics learned (0-1, Shannon entropy)
+    goal_persistence: float = 0.0  # Average % completion before switching goals
+    
+    learning_rate: float = 0.0  # Knowledge items per hour
+    social_frequency: float = 0.0  # Interactions per hour
+    
+    decision_distribution: dict[str, int] = field(default_factory=dict)  # {"move": 45, "learn": 38, "interact": 17}
+    
+    curiosity_score: float = 0.5  # Intrinsic motivation (from neural network)
+    prediction_accuracy: float = 0.0  # World model prediction quality (0-1)
+    decision_accuracy: float = 0.0  # Chosen action accuracy (0-1)
+    perception_noise_reduction: float = 0.0  # Filtering effectiveness (0-1)
+    avg_decision_confidence: float = 0.0  # Rolling decision confidence
+    uncertainty_score: float = 0.0  # Self-estimated uncertainty (0-1)
+    rolling_step_duration_ms: float = 0.0  # Recent average step duration
+    failure_rate: float = 0.0  # Rolling failure rate over monitoring window
+    performance_trend: str = ""  # improving/stable/worsening
+    last_diagnosis: str = ""  # Latest self-monitoring diagnosis summary
+    
+    # ===== DEVELOPERS: System Health & Debugging =====
+    # Is the agent working? Any errors? Performance issues?
+    
+    total_steps_executed: int = 0  # Total autonomous_step() calls
+    successful_steps: int = 0  # Steps without errors
+    failed_steps: int = 0  # Steps that raised exceptions
+    
+    avg_step_duration_ms: float = 0.0  # Processing time per step
+    last_error: str = ""  # Most recent error message
+    error_count: int = 0  # Total errors encountered
+    
+    neural_network_calls: int = 0  # Inference forward passes
+    training_updates: int = 0  # Gradient descent steps performed
+    memory_entries: int = 0  # Items in episodic memory
+    
+    last_activity_timestamp: str = ""  # ISO timestamp of last action
 
 
 @dataclass
@@ -107,19 +157,48 @@ class AgentState:
             "status": self.status.value,
             "location": {"x": self.location.x, "y": self.location.y, "z": self.location.z},
             "metrics": {
-                "knowledge_acquired": self.metrics.knowledge_acquired,
-                "worlds_explored": self.metrics.worlds_explored,
-                "collaboration_score": self.metrics.collaboration_score,
-                "innovation_index": self.metrics.innovation_index,
-                "total_steps": self.metrics.total_steps,
-                "total_rewards": self.metrics.total_rewards,
+                # Regular Users: Activity & Progress
+                "distance_traveled_km": self.metrics.distance_traveled_km,
+                "unique_locations_visited": self.metrics.unique_locations_visited,
+                "exploration_area_km2": self.metrics.exploration_area_km2,
+                "time_alive_hours": self.metrics.time_alive_hours,
+                "knowledge_items_learned": self.metrics.knowledge_items_learned,
+                "goals_achieved": self.metrics.goals_achieved,
+                "goals_active": self.metrics.goals_active,
+                "agents_encountered": self.metrics.agents_encountered,
+                "messages_sent": self.metrics.messages_sent,
+                "messages_received": self.metrics.messages_received,
+                "current_activity": self.metrics.current_activity,
+                
+                # Researchers: Cognitive Patterns
+                "exploration_entropy": self.metrics.exploration_entropy,
+                "knowledge_diversity": self.metrics.knowledge_diversity,
+                "goal_persistence": self.metrics.goal_persistence,
+                "learning_rate": self.metrics.learning_rate,
+                "social_frequency": self.metrics.social_frequency,
+                "decision_distribution": self.metrics.decision_distribution,
                 "curiosity_score": self.metrics.curiosity_score,
-                "topics_explored": self.metrics.topics_explored,
-                "knowledge_sources_queried": self.metrics.knowledge_sources_queried,
-                "prediction_errors": self.metrics.prediction_errors,
-                "novelty_encountered": self.metrics.novelty_encountered,
-                "training_steps": self.metrics.training_steps,
-                "last_training_loss": self.metrics.last_training_loss,
+                "prediction_accuracy": self.metrics.prediction_accuracy,
+                "decision_accuracy": self.metrics.decision_accuracy,
+                "perception_noise_reduction": self.metrics.perception_noise_reduction,
+                "avg_decision_confidence": self.metrics.avg_decision_confidence,
+                "uncertainty_score": self.metrics.uncertainty_score,
+                "rolling_step_duration_ms": self.metrics.rolling_step_duration_ms,
+                "failure_rate": self.metrics.failure_rate,
+                "performance_trend": self.metrics.performance_trend,
+                "last_diagnosis": self.metrics.last_diagnosis,
+                
+                # Developers: System Health
+                "total_steps_executed": self.metrics.total_steps_executed,
+                "successful_steps": self.metrics.successful_steps,
+                "failed_steps": self.metrics.failed_steps,
+                "avg_step_duration_ms": self.metrics.avg_step_duration_ms,
+                "last_error": self.metrics.last_error,
+                "error_count": self.metrics.error_count,
+                "neural_network_calls": self.metrics.neural_network_calls,
+                "training_updates": self.metrics.training_updates,
+                "memory_entries": self.metrics.memory_entries,
+                "last_activity_timestamp": self.metrics.last_activity_timestamp,
             },
             "current_goal_id": str(self.current_goal_id) if self.current_goal_id else None,
             "target_world": self.target_world,

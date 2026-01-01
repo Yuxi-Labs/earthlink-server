@@ -1,7 +1,9 @@
 """Core Agent class - autonomous intelligent actor."""
 
 import asyncio
+import logging
 from datetime import datetime
+from time import perf_counter
 from typing import Any
 from uuid import UUID
 
@@ -14,7 +16,6 @@ from .messaging import Mailbox, Message, MessagePriority, MessageType
 from .state import AgentLifecycle, AgentState, AgentStatus
 
 
-@ray.remote
 class Agent:
     """
     Autonomous intelligent agent.
@@ -41,6 +42,19 @@ class Agent:
         self._world_model: Any = None
         self._curiosity: Any = None
         self._goal_system: Any = None
+        self._perception: Any = None  # PerceptionModule
+        self._reasoning: Any = None  # ReasoningEngine
+        self._decision: Any = None  # DecisionModule
+        self._learning: Any = None  # LearningModule
+        self._monitoring: Any = None  # SelfMonitoringModule
+        self._generation: Any = None  # GenerationModule
+        self._specialization: Any = None  # SpecializationModule
+        self._knowledge_transfer: Any = None  # KnowledgeTransferModule
+        self._modeling: Any = None  # ModelingModule
+        self._evolution: Any = None  # EvolutionModule
+        self._communication: Any = None  # CommunicationModule
+        self._adaptation: Any = None  # AdaptationModule
+        self._last_memory_consolidation_step: int = 0
 
         # Messaging
         self._mailbox = Mailbox(agent_id=self.state.id)
@@ -61,14 +75,43 @@ class Agent:
         self._http_client: httpx.AsyncClient | None = None
 
     # -------------------------------------------------------------------------
+    # Local/test helpers
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    def options(cls, **options):
+        """
+        Minimal shim mirroring Ray's ``ActorClass.options`` for local/tests.
+        
+        Returns an object with ``_remote`` that just instantiates the class.
+        """
+
+        class _LocalOptions:
+            def __init__(self, target_cls, opts):
+                self._cls = target_cls
+                self._opts = opts
+
+            def _remote(self, *args, **kwargs):
+                init_kwargs = {**self._opts, **kwargs}
+                # Drop Ray-only options if passed accidentally
+                init_kwargs.pop("get_if_exists", None)
+                return self._cls(*args, **init_kwargs)
+
+        return _LocalOptions(cls, options)
+
+    # -------------------------------------------------------------------------
     # Lifecycle
     # -------------------------------------------------------------------------
 
-    async def _run_with_retries(self, coro, retries: int = 2, delay: float = 0.5):
-        """Run coroutine with simple retry to handle flaky knowledge sources."""
+    async def _run_with_retries(self, coro_or_factory, retries: int = 2, delay: float = 0.5):
+        """Run coroutine (or coroutine factory) with simple retry."""
         attempt = 0
         while True:
             try:
+                if callable(coro_or_factory) and not asyncio.iscoroutine(coro_or_factory):
+                    return await coro_or_factory()
+                # If a factory is provided, call it to get a fresh coroutine each attempt
+                coro = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
                 return await coro
             except Exception as e:
                 attempt += 1
@@ -329,6 +372,10 @@ class Agent:
             )
         
         return response
+
+    async def query_search(self, query: str, provider: str = "duckduckgo", **kwargs) -> dict[str, Any]:
+        """Lightweight alias used by tests; routes to web search."""
+        return await self.search_web(query, provider=provider, **kwargs)
 
     async def search_web(self, query: str, provider: str = "duckduckgo", **kwargs) -> dict[str, Any]:
         """Search the web for information."""
@@ -808,20 +855,15 @@ class Agent:
         
         # Query multiple sources in parallel with retries for flakiness
         tasks = {
-            "wikipedia": self._run_with_retries(self.query_wikipedia(topic, limit=5)),
-            "web": self._run_with_retries(self.search_web(topic, provider="duckduckgo")),
+            "wikipedia": self._run_with_retries(lambda: self.query_wikipedia(topic, limit=5)),
+            "search": self._run_with_retries(lambda: self.query_search(topic, provider="duckduckgo")),
+            "ollama": self._run_with_retries(
+                lambda: self.query_ollama(
+                    f"Briefly explain {topic} and list key facts.",
+                    model=self.config.get("ollama_model", "llama2"),
+                )
+            ),
         }
-        
-        # Add optional sources if available
-        try:
-            tasks["reddit"] = self._run_with_retries(self.query_reddit(topic.replace(" ", "")))  # Attempt subreddit name
-        except:
-            pass
-        
-        try:
-            tasks["twitter"] = self._run_with_retries(self.query_twitter(topic, max_results=10))
-        except:
-            pass
         
         # Execute all queries
         task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -858,13 +900,99 @@ class Agent:
                 goal_context=goal_context_str,
                 curiosity_signal=None,  # Not available in direct explore_topic call
             )
-            self.state.metrics.topics_explored += 1
         
         return results
 
     # -------------------------------------------------------------------------
     # Core Loop: Perceive → Encode → Decide → Act → Learn
     # -------------------------------------------------------------------------
+
+    def _ensure_perception(self):
+        """Lazy initialize perception module."""
+        if self._perception is None:
+            from .perception import PerceptionModule
+            self._perception = PerceptionModule(
+                agent_id=self.state.id,
+                device=str(self.device),
+            )
+    
+    def _ensure_reasoning(self):
+        """Lazy initialize reasoning engine."""
+        if self._reasoning is None:
+            from .reasoning import ReasoningEngine
+            self._reasoning = ReasoningEngine(
+                agent_id=self.state.id,
+                device=str(self.device),
+            )
+    
+    def _ensure_decision(self):
+        """Lazy initialize decision module."""
+        if self._decision is None:
+            from .decision import DecisionModule, DecisionStrategy
+            self._decision = DecisionModule(
+                agent_id=self.state.id,
+                strategy=DecisionStrategy.BALANCED,
+                risk_tolerance=0.5,
+                exploration_bonus=0.1,
+            )
+    
+    def _ensure_learning(self):
+        """Lazy initialize learning module."""
+        if self._learning is None:
+            from .learning import LearningModule
+            self._learning = LearningModule(
+                agent_id=self.state.id,
+                base_learning_rate=0.01,
+                meta_learning_enabled=True,
+            )
+
+    def _ensure_monitoring(self):
+        """Lazy initialize monitoring module."""
+        if self._monitoring is None:
+            from .monitoring import SelfMonitoringModule
+            self._monitoring = SelfMonitoringModule(window=100)
+
+    def _ensure_generation(self):
+        """Lazy initialize output generation module."""
+        if self._generation is None:
+            from .generation import GenerationModule
+            self._generation = GenerationModule(agent_id=self.state.id)
+
+    def _ensure_specialization(self):
+        """Lazy initialize specialization module."""
+        if self._specialization is None:
+            from .specialization import SpecializationModule
+            self._specialization = SpecializationModule(agent_id=self.state.id)
+
+    def _ensure_knowledge_transfer(self):
+        """Lazy initialize knowledge transfer module."""
+        if self._knowledge_transfer is None:
+            from .knowledge_transfer import KnowledgeTransferModule
+            self._knowledge_transfer = KnowledgeTransferModule(agent_id=self.state.id)
+
+    def _ensure_modeling(self):
+        """Lazy initialize modeling module."""
+        if self._modeling is None:
+            from .modeling import ModelingModule
+            self._modeling = ModelingModule(agent_id=self.state.id)
+
+    def _ensure_evolution(self):
+        """Lazy initialize evolution module."""
+        if self._evolution is None:
+            from .evolution import EvolutionModule
+            self._evolution = EvolutionModule(agent_id=self.state.id)
+
+    def _ensure_communication(self):
+        """Lazy initialize communication module."""
+        if self._communication is None:
+            from .communication import CommunicationModule
+            self._communication = CommunicationModule(agent_id=self.state.id, mailbox=self._mailbox)
+
+    def _ensure_adaptation(self):
+        """Lazy initialize adaptation module."""
+        if self._adaptation is None:
+            from .adaptation import AdaptationModule
+            self._adaptation = AdaptationModule(agent_id=self.state.id)
 
     async def autonomous_step(self) -> dict[str, Any]:
         """
@@ -876,20 +1004,183 @@ class Agent:
         - Expected information gain
         - Current goals
         - Spatial exploration (movement)
+        
+        Flow: PERCEIVE → REASON → DECIDE → ACT
         """
         import random
+
+        step_start = perf_counter()
         
-        # 1. Check if we should generate new goals
+        # 0. PERCEIVE - Read environment before deciding
+        self._ensure_perception()
+        
+        # Build environment state for perception
+        environment = {
+            "location": {
+                "x": self.state.location.x,
+                "y": self.state.location.y,
+                "z": self.state.location.z,
+            },
+            "agent_state": self.state.to_dict(),
+            "nearby_agents": [],  # TODO: Query nearby agents
+            "knowledge_sources": ["wikipedia", "web"],  # Available sources
+            "available_topics": [],  # TODO: Generate from current context
+        }
+        
+        # Create attention focus based on current goal
+        attention_focus = None
+        if self._goal_system and self.state.current_goal_id:
+            from .perception import AttentionFocus, PerceptionModality
+            current_goal = self._goal_system.get_goal(self.state.current_goal_id)
+            if current_goal:
+                # Focus perception on goal-relevant information
+                attention_focus = AttentionFocus(
+                    modalities=[
+                        PerceptionModality.SPATIAL,
+                        PerceptionModality.KNOWLEDGE,
+                        PerceptionModality.SELF,
+                    ],
+                    keywords=[current_goal.description] if current_goal.description else [],
+                    priority=current_goal.priority if hasattr(current_goal, 'priority') else 0.5,
+                    goal_id=self.state.current_goal_id,
+                )
+        
+        # Perceive environment
+        perceptions = await self._perception.perceive(environment, attention_focus)
+        perceptions, noise_reduction = self._perception.filter_perception(
+            perceptions, attention_focus=attention_focus
+        )
+        self.state.metrics.perception_noise_reduction = noise_reduction
+        
+        # Get contextual awareness
+        awareness = self._perception.get_contextual_awareness()
+        
+        # 1. REASON - Generate hypotheses from perceptions
+        self._ensure_reasoning()
+        
+        # Extract observations from perceptions for hypothesis generation
+        observations = []
+        for p in perceptions[:5]:  # Top 5 most relevant perceptions
+            observations.append({
+                "modality": p.modality.value,
+                "data": p.data,
+                "confidence": p.confidence,
+                "timestamp": p.timestamp,
+            })
+        
+        # Generate hypothesis if we have enough observations
+        if len(observations) >= 2:
+            hypothesis = self._reasoning.generate_hypothesis(observations)
+            if hypothesis:
+                print(f"[REASON] Agent {self.state.name} hypothesis: {hypothesis.description} (confidence: {hypothesis.confidence:.2f})")
+        
+        # 2. Check if we should generate new goals
         if self._goal_system and (not self.state.current_goal_id or np.random.random() < 0.1):
             await self._maybe_generate_goal()
         
-        # 2. Compute curiosity-driven exploration signal
+        # 3. Compute curiosity-driven exploration signal
         exploration_signal = self._compute_exploration_signal()
         
-        # 3. Decide on action type: movement, knowledge acquisition, or policy action
-        threshold = self.config.get("exploration_threshold", 0.3)
-        action_weights = [0.4, 0.4, 0.2]  # [move, learn, policy]
-        action_type = random.choices(["move", "learn", "policy"], weights=action_weights, k=1)[0]
+        # 4. DECIDE on action using DecisionModule
+        self._ensure_decision()
+        self._ensure_monitoring()
+        
+        # Build available actions
+        from .decision import Action, Goal
+        available_actions = [
+            Action(type="move", params={"exploration": True}, estimated_cost=0.1),
+            Action(type="learn", params={"curiosity_driven": True}, estimated_cost=0.2),
+            Action(type="policy", params={"greedy": False}, estimated_cost=0.05),
+        ]
+        
+        # Build goals from goal system
+        goals = []
+        if self._goal_system and self.state.current_goal_id:
+            current_goal = self._goal_system.get_goal(self.state.current_goal_id)
+            if current_goal:
+                goals.append(Goal(
+                    id=self.state.current_goal_id,
+                    description=current_goal.description if hasattr(current_goal, 'description') else "Active goal",
+                    priority=current_goal.priority if hasattr(current_goal, 'priority') else 0.7,
+                ))
+
+        # Ensure we always have an exploration goal to encourage movement
+        explore_priority = max(0.4, min(0.9, 0.4 + exploration_signal * 0.4))
+        goals.append(Goal(
+            id="explore_world",
+            description="Explore new locations",
+            priority=explore_priority,
+        ))
+
+        # Keep a generic learning goal so knowledge gathering still happens
+        learn_priority = max(0.3, 0.6 - exploration_signal * 0.2)
+        goals.append(Goal(
+            id="increase_knowledge",
+            description="Learn new knowledge",
+            priority=learn_priority,
+        ))
+        
+        # World state for decision-making
+        world_state = {
+            "location": (self.state.location.x, self.state.location.y),
+            "knowledge_count": self.state.metrics.knowledge_items_learned,
+            "exploration_signal": exploration_signal,
+            "nearby_agents": [],  # TODO: Query nearby agents
+        }
+        
+        # Get predictions from reasoning (formatted for DecisionModule)
+        predictions_dict = {}
+        for action in available_actions:
+            pred = self._reasoning.predict(
+                state=world_state,
+                action=action.type,
+                world_model=self._world_model,
+            )
+            predictions_dict[action.type] = {
+                "predicted_outcome": pred.predicted_outcome,
+                "confidence": pred.confidence,
+            }
+            # Log prediction
+            print(
+                f"[PREDICT] Agent {self.state.name} predicted {action.type}: "
+                f"{pred.predicted_outcome} (confidence: {pred.confidence:.2f})"
+            )
+        
+        # Get reasoning context (hypotheses)
+        reasoning_context = {
+            "hypotheses": self._reasoning.hypotheses,
+            "causal_relations": self._reasoning.causal_relations,
+        }
+        
+        # Make decision
+        decision = self._decision.decide(
+            available_actions=available_actions,
+            goals=goals,
+            world_state=world_state,
+            predictions=predictions_dict,
+            reasoning_context=reasoning_context,
+        )
+        
+        action_type = decision.action.type
+        print(f"[DECIDE] Agent {self.state.name} chose {action_type}: {decision.rationale} (confidence: {decision.confidence:.2f})")
+        
+        # Get the prediction for the chosen action
+        prediction = self._reasoning.predictions.get(f"{action_type}_{len(self._reasoning.predictions)}", 
+                                                      self._reasoning.predict(action_type, world_state, self._world_model))
+        
+        # Track decision distribution for researchers
+        if action_type not in self.state.metrics.decision_distribution:
+            self.state.metrics.decision_distribution[action_type] = 0
+        self.state.metrics.decision_distribution[action_type] += 1
+        
+        # Update time alive
+        elapsed = (datetime.utcnow() - self.state.created_at).total_seconds() / 3600
+        self.state.metrics.time_alive_hours = elapsed
+        
+        # Update developer metrics
+        self.state.metrics.total_steps_executed += 1
+        
+        actual_outcome = {}  # Will populate based on action results
         
         if action_type == "move":
             # Spatial exploration - move to new location
@@ -907,9 +1198,23 @@ class Agent:
             # Update position
             self.set_earthlink_position(new_lat, new_lon, 0.0)
             
-            # Update metrics
-            self.state.metrics.total_steps += 1
-            self.state.metrics.exploration_depth += distance_km / 1000.0
+            # Update metrics with actual data
+            self.state.metrics.distance_traveled_km += distance_km
+            self.state.metrics.current_activity = f"Moving {distance_km:.1f}km"
+            
+            print(f"[MOVE] Agent {self.state.name} moved {distance_km:.1f}km to ({new_lat:.4f}, {new_lon:.4f})")
+            
+            # Capture actual outcome
+            actual_outcome = {
+                "location": (new_lat, new_lon),
+                "distance_moved": distance_km,
+                "exploration_signal": self._compute_exploration_signal(),  # New signal after move
+            }
+            
+            # TODO: Track unique grid cells visited (e.g., 10km x 10km)
+            # grid_cell = (int(new_lat / 0.1), int(new_lon / 0.1))
+            # if grid_cell not in visited_cells:
+            #     self.state.metrics.unique_locations_visited += 1
             
             # Set status
             self.set_status(AgentStatus.EXPLORING)
@@ -920,23 +1225,495 @@ class Agent:
                 "to": (new_lat, new_lon),
                 "distance_km": distance_km,
                 "bearing": bearing,
+                "position": (new_lat, new_lon, 0.0),
             }
             
-        elif action_type == "learn" and exploration_signal >= threshold:
+        elif action_type == "learn":
             # High curiosity - acquire knowledge from external world
+            threshold = self.config.get("exploration_threshold", 0.3)
             self.set_status(AgentStatus.LEARNING)
             action = await self._explore_knowledge(curiosity_signal=exploration_signal)
+            
+            # Capture actual outcome
+            actual_outcome = {
+                "knowledge_count": self.state.metrics.knowledge_items_learned,
+                "learning_occurred": True,
+                "exploration_signal": self._compute_exploration_signal(),
+            }
             
         else:
             # Low curiosity - execute policy action in environment
             self.set_status(AgentStatus.EXECUTING)
-            observation = self._get_current_observation()
-            action = self.step(observation)
+            action = {
+                "type": action_type,
+                "action": getattr(decision.action, "params", {}),
+            }
+            
+            # Capture actual outcome
+            actual_outcome = {
+                "policy_executed": True,
+                "exploration_signal": self._compute_exploration_signal(),
+            }
         
-        # 4. Update curiosity score
+        # Update prediction with actual outcome
+        if prediction and actual_outcome:
+            prediction.actual_outcome = actual_outcome
+            # Simple error calculation
+            if prediction.predicted_outcome and actual_outcome:
+                # Count differing keys
+                pred_keys = set(prediction.predicted_outcome.keys())
+                actual_keys = set(actual_outcome.keys())
+                all_keys = pred_keys | actual_keys
+                if all_keys:
+                    different = sum(
+                        1 for k in all_keys
+                        if prediction.predicted_outcome.get(k) != actual_outcome.get(k)
+                    )
+                    prediction.prediction_error = different / len(all_keys)
+        
+        # Test any active hypotheses with this outcome
+        if actual_outcome:
+            # Find hypotheses related to this action type
+            for hyp_id, hypothesis in self._reasoning.hypotheses.items():
+                if action_type in hypothesis.description.lower():
+                    # Use outcome as evidence
+                    supporting = actual_outcome.get("exploration_signal", 0) > 0.5
+                    self._reasoning.test_hypothesis(
+                        hyp_id,
+                        evidence=str(actual_outcome),
+                        supporting=supporting
+                    )
+        
+        # 5. Update curiosity score
         self.state.metrics.curiosity_score = exploration_signal
+
+        # 6. Self-monitoring: record performance and diagnostics
+        step_duration_ms = (perf_counter() - step_start) * 1000
+        prediction_error = getattr(prediction, "prediction_error", None) if prediction else None
+        decision_conf = decision.confidence if decision else 0.0
+        goal_progress = 0.0
+        if self._goal_system and self.state.current_goal_id:
+            current_goal = self._goal_system.get_goal(self.state.current_goal_id)
+            if current_goal and hasattr(current_goal, "progress"):
+                goal_progress = getattr(current_goal, "progress", 0.0)
+
+        self._monitoring.record_step(
+            step_duration_ms=step_duration_ms,
+            decision_confidence=decision_conf,
+            prediction_error=prediction_error,
+            success=True,
+            status=self.state.status.value,
+            action_type=action_type,
+            goal_progress=goal_progress,
+        )
+
+        perf_report = self._monitoring.track_performance()
+        diagnosis = self._monitoring.diagnose(perf_report)
+
+        self.state.metrics.avg_step_duration_ms = perf_report.avg_step_duration_ms
+        self.state.metrics.rolling_step_duration_ms = perf_report.avg_step_duration_ms
+        self.state.metrics.avg_decision_confidence = perf_report.avg_decision_confidence
+        self.state.metrics.failure_rate = perf_report.failure_rate
+        self.state.metrics.performance_trend = perf_report.trend
+        self.state.metrics.uncertainty_score = perf_report.uncertainty_score
+        self.state.metrics.prediction_accuracy = perf_report.prediction_accuracy
+        if prediction_error is not None:
+            self.state.metrics.decision_accuracy = max(0.0, min(1.0, 1.0 - prediction_error))
+        self.state.metrics.last_diagnosis = diagnosis.probable_cause
+        self.state.metrics.goal_persistence = perf_report.goal_progress
+        self.state.metrics.uncertainty_score = perf_report.uncertainty_score
+        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+
+        # Memory consolidation cadence
+        self._maybe_consolidate_memory()
         
         return action
+
+    def get_monitoring_report(self) -> dict[str, Any]:
+        """Expose monitoring report for external callers (UI/analytics)."""
+        self._ensure_monitoring()
+        return self._monitoring.get_report()
+
+    # -------------------------------------------------------------------------
+    # Output Generation
+    # -------------------------------------------------------------------------
+
+    async def generate_outputs(
+        self,
+        exploration_data: list[dict[str, Any]] | None = None,
+        observations: list[dict[str, Any]] | None = None,
+        hypotheses: list[Any] | None = None,
+        evidence: list[dict[str, Any]] | None = None,
+        map_type: str = "route",
+        summary_max_length: int = 240,
+    ) -> dict[str, Any]:
+        """
+        Generate maps, summaries, and theories from recent agent data.
+        
+        Returns a dictionary containing any generated outputs.
+        """
+        self._ensure_generation()
+        self._ensure_perception()
+        self._ensure_reasoning()
+
+        outputs: dict[str, Any] = {}
+
+        # Default to recent perceptions for summarization if none provided
+        if observations is None and getattr(self._perception, "perception_history", None):
+            observations = [
+                {
+                    "modality": p.modality.value,
+                    "data": p.data,
+                    "confidence": p.confidence,
+                    "timestamp": p.timestamp,
+                }
+                for p in self._perception.perception_history[-25:]
+            ]
+
+        # Use perception data to seed exploration map when explicit data absent
+        if exploration_data is None and observations:
+            exploration_data = [
+                obs.get("data", {}) for obs in observations
+                if isinstance(obs.get("data"), dict)
+                and ("latitude" in obs["data"] or "lat" in obs["data"])
+                and ("longitude" in obs["data"] or "lon" in obs["data"])
+            ]
+
+        # Default hypotheses to current reasoning context
+        if hypotheses is None and self._reasoning and getattr(self._reasoning, "hypotheses", None):
+            hypotheses = list(self._reasoning.hypotheses.values())
+
+        if exploration_data is not None:
+            generated_map = await self._generation.generate_map(
+                exploration_data=exploration_data,
+                map_type=map_type,
+            )
+            outputs["map"] = generated_map.to_dict()
+
+        if observations is not None:
+            summary = await self._generation.create_summary(
+                observations=observations,
+                max_length=summary_max_length,
+            )
+            outputs["summary"] = summary.to_dict()
+
+        if hypotheses:
+            theory = await self._generation.formulate_theory(
+                hypotheses=hypotheses,
+                evidence=evidence or [],
+            )
+            outputs["theory"] = theory.to_dict()
+
+        # Track latest activity timestamp for UI
+        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+
+        print(
+            f"[GENERATE] Agent {self.state.name} produced outputs: "
+            f"{', '.join(outputs.keys()) if outputs else 'none'}"
+        )
+
+        return outputs
+
+    # -------------------------------------------------------------------------
+    # Specialization & Expertise
+    # -------------------------------------------------------------------------
+
+    async def analyze_specialization(
+        self,
+        activity_history: list[dict[str, Any]] | None = None,
+        population_profiles: list[dict[str, Any]] | None = None,
+        agent_population: list[UUID] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Detect specialization, estimate expertise, and suggest a niche.
+        
+        Args:
+            activity_history: Optional explicit activity records with domains.
+            population_profiles: Optional list of other agents' domains.
+            agent_population: Optional list of agent IDs for saturation scoring.
+        """
+        self._ensure_specialization()
+
+        history = activity_history or self._build_activity_history_from_metrics()
+        profile = await self._specialization.detect_specialization(history)
+
+        expertise = None
+        if profile.domain:
+            expertise = await self._specialization.evaluate_expertise(profile.domain)
+
+        niche = await self._specialization.discover_niche(
+            agent_population=agent_population or [],
+            population_profiles=population_profiles or [],
+        )
+
+        report = {
+            "profile": profile.to_dict(),
+            "expertise": expertise.to_dict() if expertise else None,
+            "niche": niche.to_dict() if niche else None,
+        }
+
+        print(
+            f"[SPECIALIZE] Agent {self.state.name} specialization: "
+            f"{profile.domain or 'none'} (confidence {profile.confidence:.2f})"
+        )
+        return report
+
+    def _build_activity_history_from_metrics(self) -> list[dict[str, Any]]:
+        """Construct lightweight activity history from existing metrics."""
+        history: list[dict[str, Any]] = []
+        now = datetime.utcnow()
+
+        # Use decision distribution as proxy for domains
+        for action, count in self.state.metrics.decision_distribution.items():
+            history.append(
+                {
+                    "domain": action,
+                    "success": True,
+                    "reward": 0.0,
+                    "timestamp": now,
+                    "count": count,
+                }
+            )
+
+        # Add knowledge and exploration signals as pseudo domains
+        if self.state.metrics.knowledge_items_learned > 0:
+            history.append(
+                {
+                    "domain": "knowledge",
+                    "success": True,
+                    "reward": min(1.0, self.state.metrics.knowledge_items_learned / 10),
+                    "timestamp": now,
+                }
+            )
+        if self.state.metrics.distance_traveled_km > 0:
+            history.append(
+                {
+                    "domain": "exploration",
+                    "success": True,
+                    "reward": min(1.0, self.state.metrics.distance_traveled_km / 100),
+                    "timestamp": now,
+                }
+            )
+
+        return history
+
+    # -------------------------------------------------------------------------
+    # Knowledge Transfer
+    # -------------------------------------------------------------------------
+
+    async def transfer_knowledge(
+        self,
+        domain: str,
+        recipient_id: UUID | None = None,
+        collective_id: str | None = None,
+        observations: list[dict[str, Any]] | None = None,
+        hypotheses: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Extract knowledge for a domain and transfer to a recipient or collective.
+        """
+        self._ensure_knowledge_transfer()
+        self._ensure_reasoning()
+
+        knowledge = await self._knowledge_transfer.extract_knowledge(
+            domain=domain,
+            observations=observations,
+            hypotheses=hypotheses or (list(self._reasoning.hypotheses.values()) if self._reasoning else []),
+        )
+
+        result: dict[str, Any] = {"knowledge": knowledge.to_dict()}
+
+        if recipient_id:
+            transfer = await self._knowledge_transfer.transfer_to_agent(recipient_id, knowledge)
+            result["transfer"] = transfer.to_dict()
+        if collective_id:
+            contributed = await self._knowledge_transfer.contribute_to_collective(
+                knowledge=knowledge,
+                collective_id=collective_id,
+            )
+            result["collective_contribution"] = contributed
+
+        # Track activity timestamp
+        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+
+        print(
+            f"[KNOWLEDGE] Agent {self.state.name} shared knowledge on '{domain}' "
+            f"to {recipient_id or collective_id or 'self'}"
+        )
+        return result
+
+    # -------------------------------------------------------------------------
+    # Modeling (world, agents, concepts)
+    # -------------------------------------------------------------------------
+
+    async def update_models(
+        self,
+        observations: list[dict[str, Any]] | None = None,
+        interaction_history: list[dict[str, Any]] | None = None,
+        concept_data: list[dict[str, Any]] | None = None,
+        target_agent_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """
+        Build/refresh world model, theory of mind, and concepts.
+        """
+        self._ensure_modeling()
+
+        observations = observations or []
+        world_model = await self._modeling.build_world_model(observations)
+
+        agent_model = None
+        if target_agent_id and interaction_history is not None:
+            agent_model = await self._modeling.model_agent(target_agent_id, interaction_history)
+
+        concept = None
+        if concept_data:
+            concept = await self._modeling.extract_concept(concept_data)
+
+        state = self._modeling.get_state()
+        report = {
+            "world_model": world_model.to_dict() if world_model else None,
+            "agent_model": agent_model.to_dict() if agent_model else None,
+            "concept": concept.to_dict() if concept else None,
+            "state": state.to_dict(),
+        }
+
+        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        print(f"[MODEL] Agent {self.state.name} updated models.")
+        return report
+
+    # -------------------------------------------------------------------------
+    # Evolution (replication, fitness, crossover)
+    # -------------------------------------------------------------------------
+
+    async def evolve(
+        self,
+        fitness_criteria: dict[str, float] | None = None,
+        metrics: dict[str, float] | None = None,
+        other_agent_id: UUID | None = None,
+        mutation_rate: float = 0.05,
+    ) -> dict[str, Any]:
+        """
+        Evaluate fitness and optionally spawn variants or crossover.
+        """
+        self._ensure_evolution()
+
+        fitness_report = await self._evolution.evaluate_fitness(
+            fitness_criteria=fitness_criteria or {"goals_achieved": 1.0, "knowledge_items_learned": 0.5},
+            metrics=metrics or {
+                "goals_achieved": self.state.metrics.goals_achieved,
+                "knowledge_items_learned": self.state.metrics.knowledge_items_learned,
+            },
+        )
+
+        variant_id = await self._evolution.self_replicate(mutation_rate=mutation_rate)
+        crossover_children = []
+        if other_agent_id:
+            crossover_children = await self._evolution.crossover(other_agent_id)
+
+        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        print(f"[EVOLVE] Agent {self.state.name} fitness {fitness_report.score:.2f}, spawned {variant_id}.")
+
+        return {
+            "fitness": fitness_report.to_dict(),
+            "replica_id": str(variant_id),
+            "crossover_children": [str(cid) for cid in crossover_children],
+        }
+
+    # -------------------------------------------------------------------------
+    # Communication (intent-based messaging)
+    # -------------------------------------------------------------------------
+
+    async def communicate(
+        self,
+        recipient_id: UUID | None = None,
+        content: dict | None = None,
+        intent: str = "direct",
+        priority: int = 1,
+        negotiation_agents: list[UUID] | None = None,
+        negotiation_topic: dict | None = None,
+        broadcast: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Send messages, negotiation proposals, or broadcasts.
+        """
+        self._ensure_communication()
+
+        result = {}
+        if broadcast:
+            res = await self._communication.broadcast(content=content or {})
+            result["broadcast"] = res.to_dict()
+        elif negotiation_agents:
+            res = await self._communication.negotiate(
+                agents=negotiation_agents,
+                negotiation_topic=negotiation_topic or {},
+            )
+            result["negotiation"] = res.to_dict()
+        elif recipient_id:
+            from .messaging import MessageType, MessagePriority
+
+            res = await self._communication.send_message(
+                recipient=recipient_id,
+                content=content or {},
+                intent=MessageType(intent) if intent in MessageType._value2member_map_ else MessageType.DIRECT,
+                priority=MessagePriority(priority) if priority in MessagePriority._value2member_map_ else MessagePriority.NORMAL,
+                subject=content.get("subject") if isinstance(content, dict) else "",
+            )
+            result["direct"] = res.to_dict()
+
+        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        print(f"[COMMUNICATE] Agent {self.state.name} communication event: {result.keys()}")
+        return result
+
+    # -------------------------------------------------------------------------
+    # Adaptation (detect shifts, strategies, behavior patches)
+    # -------------------------------------------------------------------------
+
+    async def adapt(
+        self,
+        recent_observations: list[dict[str, Any]] | None = None,
+        baseline_distribution: dict[str, Any] | None = None,
+        performance_metrics: dict[str, float] | None = None,
+        failure_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Detect distribution shifts, adapt strategy, and propose behavior patches.
+        """
+        self._ensure_adaptation()
+
+        shift_detected = await self._adaptation.detect_distribution_shift(
+            recent_observations=recent_observations or [],
+            baseline_distribution=baseline_distribution or {},
+        )
+
+        strategy_library = {
+            "conservative": Strategy(
+                name="conservative",
+                rationale="High failure rate; reduce risk.",
+                confidence=0.7,
+            ),
+            "balanced": Strategy(
+                name="balanced",
+                rationale="Default balanced strategy.",
+                confidence=0.6,
+            ),
+        }
+        strategy = await self._adaptation.adapt_strategy(
+            performance_metrics=performance_metrics or {},
+            strategy_library=strategy_library,
+        )
+
+        behavior_patch = await self._adaptation.modify_behavior(
+            failure_context=failure_context or {},
+        )
+
+        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        print(f"[ADAPT] Agent {self.state.name} shift={shift_detected}, strategy={strategy.name}")
+
+        return {
+            "shift_detected": shift_detected,
+            "strategy": strategy.to_dict(),
+            "behavior_patch": behavior_patch.to_dict(),
+        }
 
     def step(self, observation: dict[str, Any]) -> dict[str, Any]:
         """
@@ -954,7 +1731,7 @@ class Agent:
         action = self._decide()
 
         # 4. Update metrics
-        self.state.metrics.total_steps += 1
+        self.state.metrics.total_steps_executed += 1
         self.state.updated_at = datetime.utcnow()
 
         return action
@@ -966,6 +1743,10 @@ class Agent:
         Returns loss metrics.
         """
         self.set_status(AgentStatus.LEARNING)
+        
+        # Initialize advanced learning module
+        self._ensure_learning()
+        
         # Store in episodic memory
         if self._memory:
             self._memory.store_episode(transition)
@@ -980,12 +1761,18 @@ class Agent:
 
         if losses:
             mean_loss = float(sum(losses.values()) / max(len(losses), 1))
-            self.state.metrics.last_training_loss = mean_loss
-            self.state.metrics.training_steps += 1
-
-        # Update reward metrics
-        reward = transition.get("reward", 0.0)
-        self.state.metrics.total_rewards += reward
+            # Update training metrics
+            self.state.metrics.training_updates += 1
+            
+            # Adapt learning rate based on performance
+            if hasattr(self.state, 'recent_rewards'):
+                recent_perf = self.state.recent_rewards[-10:] if len(self.state.recent_rewards) >= 10 else []
+                if recent_perf:
+                    adapted_lr = self._learning.adapt_learning_rate(
+                        task_id="reinforcement_learning",
+                        recent_performance=recent_perf,
+                    )
+                    print(f"[LEARN] Adapted learning rate to {adapted_lr:.4f}")
 
         return losses
 
@@ -1010,6 +1797,28 @@ class Agent:
         # Update latent state (simple for now)
         # In full implementation, this uses the encoder network
         self.state.latent_state = observation
+
+    def _maybe_consolidate_memory(self) -> None:
+        """Periodically consolidate memory tiers and update metrics."""
+        if not self._memory:
+            return
+
+        # Consolidate every 5 autonomous steps
+        if self.state.metrics.total_steps_executed - self._last_memory_consolidation_step < 5:
+            return
+
+        result = self._memory.consolidate()
+        self._last_memory_consolidation_step = self.state.metrics.total_steps_executed
+
+        # Update memory metrics
+        if hasattr(self._memory, "long_term"):
+            try:
+                self.state.metrics.memory_entries = self._memory.long_term.count()
+            except Exception:
+                pass
+        if isinstance(result, dict):
+            self.state.metrics.memory_entries += result.get("short_to_long", 0)
+            self.state.metrics.memory_entries += result.get("episodic_to_semantic", 0)
 
     async def _maybe_generate_goal(self) -> None:
         """Generate new goal if needed (using GoalSystem)."""
@@ -1077,8 +1886,8 @@ class Agent:
             # Normalize to [0, 1]
             signal = torch.sigmoid(intrinsic_reward).item()
         
-        # Update metrics
-        self.state.metrics.prediction_errors = signal
+        # Update curiosity score from neural network
+        self.state.metrics.curiosity_score = signal
         
         return signal
 
@@ -1125,15 +1934,24 @@ class Agent:
                     intrinsic_value=0.7,
                     source="curiosity",
                 )
-                goal_id = self._goal_system.add_goal(new_goal)
-                self.state.current_goal_id = goal_id
+                goal = self._goal_system.add_goal(new_goal)
+                self.state.current_goal_id = goal.id
         
         # Explore the topic
         results = await self.explore_topic(topic)
         
-        # Update metrics
-        self.state.metrics.knowledge_sources_queried += len(results["sources"])
-        self.state.metrics.knowledge_acquired += results["knowledge_gained"]
+        # Update metrics with actual learning data
+        knowledge_gained = results.get("knowledge_gained", 0)
+        
+        if knowledge_gained > 0:
+            self.state.metrics.knowledge_items_learned += knowledge_gained
+            self.state.metrics.current_activity = f"Learning about {topic}"
+        
+        # Calculate learning rate (items per hour)
+        if self.state.metrics.time_alive_hours > 0:
+            self.state.metrics.learning_rate = (
+                self.state.metrics.knowledge_items_learned / self.state.metrics.time_alive_hours
+            )
         
         # Check if goal achieved (gained knowledge)
         if results["knowledge_gained"] > 0 and self._goal_system and self.state.current_goal_id:
@@ -1410,7 +2228,7 @@ class Agent:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
             
             # PPO update
-            log_probs, entropy, new_values = self._policy.evaluate_actions(policy_states, actions)
+            _, log_probs, entropy, new_values = self._policy.evaluate_actions(policy_states, actions)
             
             # Value loss
             value_loss = 0.5 * ((new_values - returns) ** 2 * weights).mean()
@@ -1564,7 +2382,11 @@ class Agent:
         curiosity_signal: float | None = None,
     ) -> None:
         """Log knowledge acquisition to database with full context (WHAT, WHEN, WHY, WHERE, QUALITY)."""
-        from db.database import async_session_maker
+        try:
+            from db.database import async_session_maker
+        except ModuleNotFoundError:
+            # In lightweight/test environments without DB, skip logging
+            return
         from sqlalchemy import text
         import traceback
         
@@ -1639,7 +2461,7 @@ class Agent:
             pass
         
         # Update metrics
-        self.state.metrics.total_steps += 1
+        self.state.metrics.total_steps_executed += 1
         
         return {
             "type": "movement",
@@ -1944,3 +2766,9 @@ class Agent:
     # -------------------------------------------------------------------------
     # Autonomous Behavior
     # -------------------------------------------------------------------------
+
+
+# Ray actor wrapper for concurrent execution.
+AgentActor = ray.remote(Agent)
+
+__all__ = ["Agent", "AgentActor"]

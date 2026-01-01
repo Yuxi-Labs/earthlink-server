@@ -1,6 +1,6 @@
 """World environments for Earthlink agents."""
 
 from src.worlds.base import World
-from src.worlds.earth import EarthWorld
+from src.worlds.earthlink import EarthlinkWorld
 
-__all__ = ["World", "EarthWorld"]
+__all__ = ["World", "EarthlinkWorld"]

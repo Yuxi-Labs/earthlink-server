@@ -1,6 +1,7 @@
 """Simulation Runner - orchestrates agents and worlds."""
 
 import asyncio
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,6 +12,7 @@ from uuid import UUID
 import ray
 from sqlalchemy import select
 
+from src.agents.core import AgentActor
 from src.db.database import async_session_maker
 from src.db.models import Agent as AgentModel
 from .events import Event, EventBus, EventType
@@ -80,8 +82,8 @@ class SimulationRunner:
         self.state_persistence = StatePersistence(storage_dir="snapshots")
         
         # Register world types
-        from src.worlds.earth import EarthWorld
-        self.world_registry.register_world_class("earth", EarthWorld)
+        from src.worlds.earthlink import EarthlinkWorld
+        self.world_registry.register_world_class("earthlink", EarthlinkWorld)
 
         # Agent management
         self._agents: dict[UUID, ray.ObjectRef] = {}
@@ -119,8 +121,12 @@ class SimulationRunner:
                 ray.init(ignore_reinit_error=True)
                 self._ray_initialized = True
 
-        # Load persisted agents from database
-        await self._load_persisted_agents()
+        # Load persisted agents from database (only if enabled)
+        restore_agents = os.getenv("RESTORE_AGENTS_ON_STARTUP", "true").lower() == "true"
+        if restore_agents:
+            await self._load_persisted_agents()
+        else:
+            print("Agent restoration disabled (RESTORE_AGENTS_ON_STARTUP=false)")
 
         self.event_bus.publish(Event(
             event_type=EventType.SIMULATION_STARTED,
@@ -137,7 +143,7 @@ class SimulationRunner:
         for db_agent in db_agents:
             try:
                 # Recreate Ray actor
-                agent_ref = Agent.remote(name=db_agent.name, config=db_agent.config or {})
+                agent_ref = AgentActor.remote(name=db_agent.name, config=db_agent.config or {})
                 
                 # Verify agent ID matches
                 ray_agent_id = UUID(await agent_ref.get_id.remote())
@@ -189,7 +195,6 @@ class SimulationRunner:
         placement_group: str | None = None,
     ) -> UUID:
         """Spawn a new agent."""
-        from ..agents.core import Agent
         import random
 
         # Merge with default config
@@ -205,9 +210,9 @@ class SimulationRunner:
         
         # Create Ray actor with optional placement strategy
         if actor_options:
-            agent_ref = Agent.options(**actor_options).remote(name=name, config=agent_config)
+            agent_ref = AgentActor.options(**actor_options).remote(name=name, config=agent_config)
         else:
-            agent_ref = Agent.remote(name=name, config=agent_config)
+            agent_ref = AgentActor.remote(name=name, config=agent_config)
 
         # Get agent ID
         agent_id = UUID(await agent_ref.get_id.remote())
@@ -235,11 +240,14 @@ class SimulationRunner:
 
         # Persist agent to database
         try:
+            agent_state = await agent_ref.get_state.remote()
             async with async_session_maker() as db:
                 db_agent = AgentModel(
                     id=agent_id,
                     name=name,
-                    state="spawned",
+                    lifecycle=agent_state.get("lifecycle", "spawned"),
+                    status=agent_state.get("status", "idle"),
+                    state=None,
                     config=agent_config,
                 )
                 db.add(db_agent)
@@ -252,7 +260,12 @@ class SimulationRunner:
         self.event_bus.publish(Event(
             event_type=EventType.AGENT_SPAWNED,
             source_agent_id=agent_id,
-            data={"name": name, "config": agent_config},
+            data={
+                "name": name,
+                "config": agent_config,
+                "lifecycle": agent_state.get("lifecycle", "spawned"),
+                "status": agent_state.get("status", "idle"),
+            },
         ))
 
         return agent_id
@@ -273,13 +286,16 @@ class SimulationRunner:
 
         # Update database state
         try:
+            from src.agents.core import AgentLifecycle, AgentStatus
             async with async_session_maker() as db:
                 result = await db.execute(
                     select(AgentModel).where(AgentModel.id == agent_id)
                 )
                 db_agent = result.scalar_one_or_none()
                 if db_agent:
-                    db_agent.state = "destroyed"
+                    db_agent.lifecycle = AgentLifecycle.EXPIRES.value
+                    db_agent.status = AgentStatus.RETIRED.value
+                    db_agent.state = None
                     db_agent.updated_at = datetime.utcnow()
                     await db.commit()
         except Exception as e:

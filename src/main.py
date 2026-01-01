@@ -24,6 +24,7 @@ _simulation_runner: SimulationRunner | None = None
 _event_bridge: EventBridge | None = None
 _message_router: MessageRouter | None = None
 _broadcast_task: asyncio.Task | None = None
+_agent_broadcast_task: asyncio.Task | None = None
 
 
 def get_simulation_runner() -> SimulationRunner | None:
@@ -44,7 +45,7 @@ def get_message_router_instance() -> MessageRouter | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global _simulation_runner, _event_bridge, _message_router, _broadcast_task
+    global _simulation_runner, _event_bridge, _message_router, _broadcast_task, _agent_broadcast_task
 
     # Startup
     await init_db()
@@ -73,6 +74,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Auto-start simulation
     asyncio.create_task(_simulation_runner.run())
 
+    async def push_agents_periodically():
+        """Broadcast full agent snapshots periodically so clients stay live."""
+        while True:
+            try:
+                if _simulation_runner:
+                    agents = await _simulation_runner.list_agents()
+                    await ws_manager.broadcast({
+                        "type": "agent_update",
+                        "payload": {"agents": agents},
+                    })
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                # Keep the loop alive even if one broadcast fails
+                await asyncio.sleep(2)
+
+    _agent_broadcast_task = asyncio.create_task(push_agents_periodically())
+
     yield
 
     # Shutdown
@@ -92,6 +112,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             _event_bridge.unregister_from_event_bus(_simulation_runner.event_bus)
         await _simulation_runner.shutdown()
         _simulation_runner = None
+
+    if _agent_broadcast_task:
+        _agent_broadcast_task.cancel()
+        try:
+            await _agent_broadcast_task
+        except asyncio.CancelledError:
+            pass
+        _agent_broadcast_task = None
 
     _event_bridge = None
     _message_router = None

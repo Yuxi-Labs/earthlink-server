@@ -16,7 +16,7 @@ class Transition:
     action: torch.Tensor
     reward: float
     next_state: torch.Tensor
-    done: bool
+    done: bool = False
     goal: torch.Tensor | None = None
     info: dict[str, Any] = field(default_factory=dict)
 

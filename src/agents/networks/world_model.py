@@ -113,7 +113,9 @@ class WorldModel(nn.Module):
         self,
         state: torch.Tensor,
         action: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
+        *,
+        return_full: bool = False,
+    ) -> dict[str, torch.Tensor] | torch.Tensor:
         """
         Predict next state, reward, and done.
         
@@ -140,8 +142,8 @@ class WorldModel(nn.Module):
             next_state_log_var = None
 
         # Predict reward and done
-        reward = self.reward_predictor(features).squeeze(-1)
-        done_prob = self.done_predictor(features).squeeze(-1)
+        reward = self.reward_predictor(features)
+        done_prob = self.done_predictor(features)
 
         result = {
             "next_state_mean": next_state_mean,
@@ -152,7 +154,7 @@ class WorldModel(nn.Module):
         if self.probabilistic:
             result["next_state_log_var"] = next_state_log_var
 
-        return result
+        return result if return_full else next_state_mean
 
     def predict_next_state(
         self,
@@ -161,7 +163,7 @@ class WorldModel(nn.Module):
         sample: bool = True,
     ) -> torch.Tensor:
         """Predict next state only."""
-        outputs = self.forward(state, action)
+        outputs = self.forward(state, action, return_full=True)
 
         if self.probabilistic and sample:
             # Sample from predicted distribution
@@ -188,7 +190,7 @@ class WorldModel(nn.Module):
             - reward_loss: Reward prediction loss
             - done_loss: Done prediction loss
         """
-        outputs = self.forward(states, actions)
+        outputs = self.forward(states, actions, return_full=True)
 
         # State prediction loss
         if self.probabilistic:

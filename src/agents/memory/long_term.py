@@ -5,8 +5,13 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-import chromadb
-from chromadb.config import Settings
+# ChromaDB is optional; fallback to in-memory collection if unavailable.
+try:
+    import chromadb  # type: ignore
+    from chromadb.config import Settings  # type: ignore
+except Exception:  # pragma: no cover - fallback when chromadb not installed
+    chromadb = None
+    Settings = None
 
 
 @dataclass
@@ -35,26 +40,29 @@ class LongTermMemory:
         chroma_url: str | None = None,
     ):
         self.collection_name = collection_name
+        self._init_collection(chroma_url, persist_directory)
+
+    def _init_collection(self, chroma_url: str | None, persist_directory: str | None) -> None:
+        """Initialize vector collection with ChromaDB or in-memory fallback."""
+        if chromadb is None or Settings is None:
+            self.collection = _InMemoryCollection()
+            return
 
         # Initialize ChromaDB client
         if chroma_url:
-            # Remote ChromaDB
             self.client = chromadb.HttpClient(host=chroma_url)
         elif persist_directory:
-            # Persistent local
             self.client = chromadb.PersistentClient(
                 path=persist_directory,
                 settings=Settings(anonymized_telemetry=False),
             )
         else:
-            # In-memory
             self.client = chromadb.Client(
                 settings=Settings(anonymized_telemetry=False),
             )
 
-        # Get or create collection
         self.collection = self.client.get_or_create_collection(
-            name=collection_name,
+            name=self.collection_name,
             metadata={"hnsw:space": "cosine"},
         )
 
@@ -80,6 +88,50 @@ class LongTermMemory:
         )
         
         return entry_id
+
+    def count(self) -> int:
+        """Return total number of stored long-term memories."""
+        try:
+            return self.collection.count()
+        except Exception:
+            return 0
+
+
+class _InMemoryCollection:
+    """Minimal in-memory vector store fallback for development/tests."""
+
+    def __init__(self):
+        self._records: list[dict[str, Any]] = []
+
+    def add(self, ids, embeddings, documents, metadatas):
+        for id_, emb, doc, meta in zip(ids, embeddings, documents, metadatas):
+            self._records.append(
+                {"id": id_, "embedding": emb, "document": doc, "metadata": meta}
+            )
+
+    def query(self, query_embeddings, n_results=5, where=None):
+        # Very naive similarity: return first n items
+        records = self._records[:n_results]
+        return {
+            "ids": [[r["id"] for r in records]],
+            "documents": [[r["document"] for r in records]],
+            "metadatas": [[r["metadata"] for r in records]],
+            "distances": [[0.0 for _ in records]],
+        }
+
+    def get(self, ids):
+        found = [r for r in self._records if r["id"] in ids]
+        if not found:
+            return {"ids": [], "documents": [], "metadatas": []}
+        first = found[0]
+        return {
+            "ids": [first["id"]],
+            "documents": [first["document"]],
+            "metadatas": [first["metadata"]],
+        }
+
+    def count(self):
+        return len(self._records)
 
     def search(
         self,

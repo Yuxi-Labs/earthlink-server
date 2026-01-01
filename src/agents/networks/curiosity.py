@@ -150,7 +150,7 @@ class ICM(CuriosityModule):
                 reduction="none",
             ).mean(dim=-1)
 
-            return self.scaling * pred_error
+            return self.scaling * pred_error.unsqueeze(-1)
 
     def update(
         self,

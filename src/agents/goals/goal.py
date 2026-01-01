@@ -12,12 +12,13 @@ import torch
 class GoalStatus(Enum):
     """Goal lifecycle status."""
 
-    PROPOSED = auto()     # Newly generated, not yet committed
-    ACTIVE = auto()       # Currently being pursued
-    SUSPENDED = auto()    # Temporarily paused
-    ACHIEVED = auto()     # Successfully completed
-    ABANDONED = auto()    # Given up (too difficult or irrelevant)
-    FAILED = auto()       # Attempted but could not achieve
+    PROPOSED = "proposed"     # Newly generated, not yet committed
+    ACTIVE = "active"         # Currently being pursued
+    IN_PROGRESS = "in_progress"  # Alias for active progress
+    SUSPENDED = "suspended"   # Temporarily paused
+    ACHIEVED = "achieved"     # Successfully completed
+    ABANDONED = "abandoned"   # Given up (too difficult or irrelevant)
+    FAILED = "failed"         # Attempted but could not achieve
 
 
 class GoalType(Enum):
@@ -132,7 +133,7 @@ class Goal:
     @property
     def is_active(self) -> bool:
         """Check if goal is currently being pursued."""
-        return self.status == GoalStatus.ACTIVE
+        return self.status in (GoalStatus.ACTIVE, GoalStatus.IN_PROGRESS)
 
     @property
     def effective_priority(self) -> float:
