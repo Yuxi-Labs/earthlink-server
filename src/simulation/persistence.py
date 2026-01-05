@@ -29,8 +29,8 @@ class SimulationSnapshot:
         self.agents: dict[str, dict[str, Any]] = {}
         self.agent_checkpoints: dict[str, bytes] = {}
         
-        # Worlds
-        self.worlds: dict[str, dict[str, Any]] = {}
+        # World state
+        self.world: dict[str, Any] | None = None
         
         # Episodes
         self.episodes: list[dict[str, Any]] = []
@@ -46,7 +46,7 @@ class SimulationSnapshot:
             "total_steps": self.total_steps,
             "simulation_state": self.simulation_state,
             "agents": self.agents,
-            "worlds": self.worlds,
+            "world": self.world,
             "episodes": self.episodes,
             "stats": self.stats,
         }
@@ -91,16 +91,14 @@ class StatePersistence:
             except Exception as e:
                 print(f"Failed to capture agent {agent_id}: {e}")
         
-        # Capture world states
-        for world_id in simulation_runner.world_registry._worlds.keys():
-            world = simulation_runner.get_world(world_id)
-            if world:
-                snapshot.worlds[world_id] = {
-                    "id": world.id,
-                    "name": world.name,
-                    "current_step": world._current_step,
-                    "is_loaded": world._is_loaded,
-                }
+        # Capture world state (single world)
+        if simulation_runner.world:
+            snapshot.world = {
+                "id": simulation_runner.world.id,
+                "name": simulation_runner.world.name,
+                "current_step": simulation_runner.world._current_step,
+                "is_loaded": simulation_runner.world._is_loaded,
+            }
         
         # Capture episode manager state (if exists)
         if hasattr(simulation_runner, 'episode_manager'):
@@ -157,14 +155,11 @@ class StatePersistence:
         # Restore simulation state
         simulation_runner._total_steps = snapshot.total_steps
         
-        # Restore worlds
-        for world_id, world_data in snapshot.worlds.items():
-            # World should already exist in registry
-            world = simulation_runner.get_world(world_id)
-            if world:
-                world._current_step = world_data["current_step"]
-                if world_data["is_loaded"]:
-                    await world.load()
+        # Restore world state
+        if snapshot.world and simulation_runner.world:
+            simulation_runner.world._current_step = snapshot.world["current_step"]
+            if snapshot.world["is_loaded"] and not simulation_runner.world._is_loaded:
+                await simulation_runner.world.load()
         
         # Restore agents
         checkpoints_dir = snapshot_dir / "checkpoints"
@@ -172,10 +167,9 @@ class StatePersistence:
         for agent_id_str, agent_state in snapshot.agents.items():
             agent_id = UUID(agent_id_str)
             
-            # Create agent
+            # Create agent (agents are automatically in the world)
             agent_ref = await simulation_runner.spawn_agent(
                 name=agent_state["name"],
-                agent_id=agent_id,
             )
             
             # Load checkpoint
@@ -185,18 +179,13 @@ class StatePersistence:
                     await agent_ref.load_checkpoint.remote(str(checkpoint_path))
                 except Exception as e:
                     print(f"Failed to load checkpoint for {agent_id}: {e}")
-            
-            # Assign to world
-            world_id = agent_state.get("world_id")
-            if world_id:
-                await simulation_runner.assign_agent_to_world(agent_id, world_id)
         
         # Restore episode manager (if exists)
         if hasattr(simulation_runner, 'episode_manager') and snapshot.episodes:
             # Episodes are historical, just log them
             print(f"  Loaded {len(snapshot.episodes)} historical episodes")
         
-        print(f"✓ Snapshot loaded: {len(snapshot.agents)} agents, {len(snapshot.worlds)} worlds")
+        print(f"✓ Snapshot loaded: {len(snapshot.agents)} agents")
         return True
     
     def list_snapshots(self) -> list[dict[str, Any]]:
@@ -217,7 +206,7 @@ class StatePersistence:
                     "timestamp": metadata["timestamp"],
                     "total_steps": metadata["total_steps"],
                     "num_agents": len(metadata["agents"]),
-                    "num_worlds": len(metadata["worlds"]),
+                    "world": metadata.get("world", {}).get("name"),
                     "metadata": metadata.get("metadata", {}),
                 })
         

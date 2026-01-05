@@ -166,6 +166,35 @@ class SimulationRun(Base):
     checkpoint_step: Mapped[int | None] = mapped_column(nullable=True)
 
 
+class VoiceTranscript(Base):
+    """Voice interaction transcripts."""
+
+    __tablename__ = "voice_transcripts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    agent_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("agents.id"), nullable=True
+    )
+    
+    # Speaker
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Roles: user, agent, system
+    
+    # Content
+    text: Mapped[str] = mapped_column(String(10000), nullable=False)
+    
+    # Audio metadata (optional)
+    audio_duration_ms: Mapped[int | None] = mapped_column(nullable=True)
+    audio_format: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    
+    # Tool calls (if any)
+    tool_calls: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class MetricSnapshot(Base):
     """Time-series metrics snapshots."""
 

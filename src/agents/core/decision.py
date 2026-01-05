@@ -397,13 +397,15 @@ class DecisionModule:
         world_state: dict,
     ) -> float:
         """Estimate learning value of action."""
-        # Exploration actions have high info gain
-        if action.type in ["explore", "learn", "experiment"]:
+        # Both move and learn provide equal information gain
+        # Moving to new locations provides spatial knowledge
+        # Learning provides conceptual knowledge
+        if action.type == "move":
+            # Movement provides discovery of new locations, features, patterns
             return self.exploration_bonus * 2
         
-        # Moving to new locations has info gain
-        if action.type == "move":
-            return self.exploration_bonus
+        if action.type in ["explore", "learn", "experiment"]:
+            return self.exploration_bonus * 2
         
         # Communicating can provide info
         if action.type in ["communicate", "query", "observe"]:
@@ -428,9 +430,14 @@ class DecisionModule:
         predictions: dict[str, Any] = None,
     ) -> float:
         """Estimate future value from action."""
-        # Learning actions have long-term value
+        # Both learning and movement have equal long-term value
+        # Movement enables access to new regions and resources
+        # Learning builds knowledge for better decisions
         if action.type == "learn":
-            return 0.3
+            return 0.2
+        
+        if action.type == "move":
+            return 0.2  # Movement is equally valuable - enables exploration
         
         # Actions advancing high-priority goals have long-term value
         if goals:

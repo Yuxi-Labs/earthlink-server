@@ -4,19 +4,18 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..knowledge.reddit import RedditSource
-from ..knowledge.twitter import TwitterSource
+from src.data.sources import RedditSource, XSource
 
 router = APIRouter(prefix="/social", tags=["social"])
 
 # Initialize sources
 reddit = RedditSource()
-twitter = None  # Will be initialized if TWITTER_BEARER_TOKEN is set
+x = None  # Will be initialized if X_BEARER_TOKEN is set
 
 try:
-    twitter = TwitterSource()
+    x = XSource()
 except ValueError:
-    # Twitter token not available
+    # X token not available
     pass
 
 
@@ -24,8 +23,8 @@ except ValueError:
 async def shutdown():
     """Cleanup on shutdown."""
     await reddit.close()
-    if twitter:
-        await twitter.close()
+    if x:
+        await x.close()
 
 
 # Reddit endpoints
@@ -175,154 +174,154 @@ async def get_subreddit_info(subreddit: str) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Twitter endpoints
-@router.get("/twitter/search")
-async def search_twitter(
+# X endpoints
+@router.get("/x/search")
+async def search_x(
     query: str = Query(..., min_length=1),
     max_results: int = Query(10, ge=10, le=100),
     language: str | None = None,
 ) -> dict[str, Any]:
     """
-    Search recent tweets (last 7 days).
+    Search recent posts (last 7 days).
     
-    - **query**: Search query (Twitter search syntax)
+    - **query**: Search query (X search syntax)
     - **max_results**: Number of results (10-100)
     - **language**: Language code (e.g., "en")
     
-    Requires TWITTER_BEARER_TOKEN environment variable.
+    Requires X_BEARER_TOKEN environment variable.
     """
-    if not twitter:
+    if not x:
         raise HTTPException(
             status_code=503,
-            detail="Twitter API not configured. Set TWITTER_BEARER_TOKEN environment variable.",
+            detail="X API not configured. Set X_BEARER_TOKEN environment variable.",
         )
     
     try:
-        tweets = await twitter.search_recent_tweets(
+        posts = await x.search_recent_posts(
             query=query,
             max_results=max_results,
             language=language,
         )
         return {
             "query": query,
-            "count": len(tweets),
-            "tweets": [
+            "count": len(posts),
+            "posts": [
                 {
-                    "id": t.id,
-                    "text": t.text,
-                    "author_username": t.author_username,
-                    "author_name": t.author_name,
-                    "created_at": t.created_at,
-                    "like_count": t.like_count,
-                    "retweet_count": t.retweet_count,
-                    "reply_count": t.reply_count,
-                    "hashtags": t.hashtags,
-                    "mentions": t.mentions,
+                    "id": p.id,
+                    "text": p.text,
+                    "author_username": p.author_username,
+                    "author_name": p.author_name,
+                    "created_at": p.created_at,
+                    "like_count": p.like_count,
+                    "repost_count": p.repost_count,
+                    "reply_count": p.reply_count,
+                    "hashtags": p.hashtags,
+                    "mentions": p.mentions,
                 }
-                for t in tweets
+                for p in posts
             ],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/twitter/hashtag/{hashtag}")
-async def search_twitter_hashtag(
+@router.get("/x/hashtag/{hashtag}")
+async def search_x_hashtag(
     hashtag: str,
     max_results: int = Query(10, ge=10, le=100),
 ) -> dict[str, Any]:
     """
-    Search tweets by hashtag.
+    Search posts by hashtag.
     
     - **hashtag**: Hashtag (without #)
     - **max_results**: Number of results
     
-    Requires TWITTER_BEARER_TOKEN environment variable.
+    Requires X_BEARER_TOKEN environment variable.
     """
-    if not twitter:
+    if not x:
         raise HTTPException(
             status_code=503,
-            detail="Twitter API not configured. Set TWITTER_BEARER_TOKEN environment variable.",
+            detail="X API not configured. Set X_BEARER_TOKEN environment variable.",
         )
     
     try:
-        tweets = await twitter.search_hashtag(hashtag, max_results)
+        posts = await x.search_hashtag(hashtag, max_results)
         return {
             "hashtag": hashtag,
-            "count": len(tweets),
-            "tweets": [
+            "count": len(posts),
+            "posts": [
                 {
-                    "id": t.id,
-                    "text": t.text,
-                    "author_username": t.author_username,
-                    "like_count": t.like_count,
-                    "retweet_count": t.retweet_count,
+                    "id": p.id,
+                    "text": p.text,
+                    "author_username": p.author_username,
+                    "like_count": p.like_count,
+                    "repost_count": p.repost_count,
                 }
-                for t in tweets
+                for p in posts
             ],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/twitter/topic/{topic}")
-async def search_twitter_topic(
+@router.get("/x/topic/{topic}")
+async def search_x_topic(
     topic: str,
     max_results: int = Query(10, ge=10, le=100),
     language: str = Query("en"),
 ) -> dict[str, Any]:
     """
-    Search tweets by topic with quality filters.
+    Search posts by topic with quality filters.
     
     - **topic**: Topic to search for
     - **max_results**: Number of results
     - **language**: Language code
     
-    Requires TWITTER_BEARER_TOKEN environment variable.
+    Requires X_BEARER_TOKEN environment variable.
     """
-    if not twitter:
+    if not x:
         raise HTTPException(
             status_code=503,
-            detail="Twitter API not configured. Set TWITTER_BEARER_TOKEN environment variable.",
+            detail="X API not configured. Set X_BEARER_TOKEN environment variable.",
         )
     
     try:
-        tweets = await twitter.search_by_topic(topic, max_results, language)
+        posts = await x.search_by_topic(topic, max_results, language)
         return {
             "topic": topic,
-            "count": len(tweets),
-            "tweets": [
+            "count": len(posts),
+            "posts": [
                 {
-                    "id": t.id,
-                    "text": t.text,
-                    "author_username": t.author_username,
-                    "like_count": t.like_count,
-                    "retweet_count": t.retweet_count,
+                    "id": p.id,
+                    "text": p.text,
+                    "author_username": p.author_username,
+                    "like_count": p.like_count,
+                    "repost_count": p.repost_count,
                 }
-                for t in tweets
+                for p in posts
             ],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/twitter/user/{username}")
-async def get_twitter_user(username: str) -> dict[str, Any]:
+@router.get("/x/user/{username}")
+async def get_x_user(username: str) -> dict[str, Any]:
     """
     Get user information by username.
     
-    - **username**: Twitter username (without @)
+    - **username**: X username (without @)
     
-    Requires TWITTER_BEARER_TOKEN environment variable.
+    Requires X_BEARER_TOKEN environment variable.
     """
-    if not twitter:
+    if not x:
         raise HTTPException(
             status_code=503,
-            detail="Twitter API not configured. Set TWITTER_BEARER_TOKEN environment variable.",
+            detail="X API not configured. Set X_BEARER_TOKEN environment variable.",
         )
     
     try:
-        user = await twitter.get_user_by_username(username)
+        user = await x.get_user_by_username(username)
         return {
             "id": user.id,
             "username": user.username,
@@ -330,7 +329,7 @@ async def get_twitter_user(username: str) -> dict[str, Any]:
             "description": user.description,
             "followers_count": user.followers_count,
             "following_count": user.following_count,
-            "tweet_count": user.tweet_count,
+            "post_count": user.post_count,
             "verified": user.verified,
             "location": user.location,
         }
@@ -338,48 +337,48 @@ async def get_twitter_user(username: str) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/twitter/user/{user_id}/tweets")
-async def get_user_tweets(
+@router.get("/x/user/{user_id}/posts")
+async def get_user_posts(
     user_id: str,
     max_results: int = Query(10, ge=5, le=100),
-    exclude_retweets: bool = False,
+    exclude_reposts: bool = False,
     exclude_replies: bool = False,
 ) -> dict[str, Any]:
     """
-    Get tweets from a user's timeline.
+    Get posts from a user's timeline.
     
-    - **user_id**: Twitter user ID
+    - **user_id**: X user ID
     - **max_results**: Number of results (5-100)
-    - **exclude_retweets**: Exclude retweets
+    - **exclude_reposts**: Exclude reposts
     - **exclude_replies**: Exclude replies
     
-    Requires TWITTER_BEARER_TOKEN environment variable.
+    Requires X_BEARER_TOKEN environment variable.
     """
-    if not twitter:
+    if not x:
         raise HTTPException(
             status_code=503,
-            detail="Twitter API not configured. Set TWITTER_BEARER_TOKEN environment variable.",
+            detail="X API not configured. Set X_BEARER_TOKEN environment variable.",
         )
     
     try:
-        tweets = await twitter.get_user_tweets(
+        posts = await x.get_user_posts(
             user_id=user_id,
             max_results=max_results,
-            exclude_retweets=exclude_retweets,
+            exclude_reposts=exclude_reposts,
             exclude_replies=exclude_replies,
         )
         return {
             "user_id": user_id,
-            "count": len(tweets),
-            "tweets": [
+            "count": len(posts),
+            "posts": [
                 {
-                    "id": t.id,
-                    "text": t.text,
-                    "created_at": t.created_at,
-                    "like_count": t.like_count,
-                    "retweet_count": t.retweet_count,
+                    "id": p.id,
+                    "text": p.text,
+                    "created_at": p.created_at,
+                    "like_count": p.like_count,
+                    "repost_count": p.repost_count,
                 }
-                for t in tweets
+                for p in posts
             ],
         }
     except Exception as e:

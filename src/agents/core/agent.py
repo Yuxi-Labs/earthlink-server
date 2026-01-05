@@ -120,8 +120,181 @@ class Agent:
                 await asyncio.sleep(delay)
 
     def get_state(self) -> dict[str, Any]:
-        """Return serializable agent state."""
-        return self.state.to_dict()
+        """Return serializable agent state including capability data."""
+        base_state = self.state.to_dict()
+        
+        # Add capability module data
+        base_state["reasoning"] = self._get_reasoning_state()
+        base_state["decision"] = self._get_decision_state()
+        base_state["world_model"] = self._get_world_model_state()
+        base_state["memory"] = self._get_memory_state()
+        base_state["adaptation"] = self._get_adaptation_state()
+        base_state["monitoring"] = self._get_monitoring_state()
+        base_state["specialization"] = self._get_specialization_state()
+        base_state["evolution"] = self._get_evolution_state()
+        base_state["knowledge_transfer"] = self._get_knowledge_transfer_state()
+        base_state["outputs"] = self._get_outputs_state()
+        base_state["recent_observations"] = getattr(self, '_recent_observations', [])[-10:]
+        base_state["action_history"] = getattr(self, '_action_history', [])[-20:]
+        base_state["movement_history"] = getattr(self, '_movement_history', [])[-20:]
+        
+        return base_state
+    
+    def _get_reasoning_state(self) -> dict[str, Any]:
+        """Get reasoning engine state for API."""
+        if not self._reasoning:
+            return {}
+        try:
+            return {
+                "hypotheses": [
+                    {"id": h.id, "text": h.text, "confidence": h.confidence, "status": h.status}
+                    for h in getattr(self._reasoning, 'hypotheses', {}).values()
+                ][:10],
+                "predictions": getattr(self._reasoning, '_recent_predictions', [])[-10:],
+                "causal_relations": [
+                    {"id": c.id, "cause": c.cause, "effect": c.effect, "strength": c.strength}
+                    for c in getattr(self._reasoning, 'causal_relations', {}).values()
+                ][:10],
+                "prediction_accuracy": getattr(self._reasoning, 'average_prediction_error', 0),
+                "hypotheses_confirmed": getattr(self._reasoning, 'hypotheses_confirmed', 0),
+                "hypotheses_rejected": getattr(self._reasoning, 'hypotheses_rejected', 0),
+            }
+        except Exception:
+            return {}
+    
+    def _get_decision_state(self) -> dict[str, Any]:
+        """Get decision module state for API."""
+        if not self._decision:
+            return {}
+        try:
+            return {
+                "last_decision": getattr(self._decision, '_last_decision', {}),
+                "decision_history": getattr(self._decision, '_decision_history', [])[-10:],
+                "strategy": getattr(self._decision, 'strategy', 'balanced'),
+                "total_decisions": getattr(self._decision, '_total_decisions', 0),
+            }
+        except Exception:
+            return {}
+    
+    def _get_world_model_state(self) -> dict[str, Any]:
+        """Get world model state for API."""
+        if not self._world_model:
+            return {}
+        try:
+            return {
+                "regions": getattr(self._world_model, 'regions', {}),
+                "entities": getattr(self._world_model, 'entities', {}),
+                "confidence": getattr(self._world_model, 'confidence', 0),
+            }
+        except Exception:
+            return {}
+    
+    def _get_memory_state(self) -> dict[str, Any]:
+        """Get memory state for API."""
+        if not self._memory:
+            return {}
+        try:
+            episodic = getattr(self._memory, 'episodic', [])
+            semantic = getattr(self._memory, 'semantic', [])
+            procedural = getattr(self._memory, 'procedural', [])
+            working = getattr(self._memory, 'working', [])
+            return {
+                "episodic": episodic[-5:] if episodic else [],
+                "semantic": semantic[-5:] if semantic else [],
+                "procedural": procedural[-5:] if procedural else [],
+                "working": working if working else [],
+                "total_memories": len(episodic) + len(semantic) + len(procedural),
+                "working_capacity": getattr(self._memory, 'working_capacity', 7),
+            }
+        except Exception:
+            return {}
+    
+    def _get_adaptation_state(self) -> dict[str, Any]:
+        """Get adaptation state for API."""
+        if not self._adaptation:
+            return {}
+        try:
+            return {
+                "current_strategy": getattr(self._adaptation, 'current_strategy', 'balanced'),
+                "strategy_history": getattr(self._adaptation, '_strategy_history', [])[-10:],
+                "detected_shifts": getattr(self._adaptation, '_detected_shifts', [])[-5:],
+                "behavior_modifications": getattr(self._adaptation, '_modifications', [])[-5:],
+            }
+        except Exception:
+            return {}
+    
+    def _get_monitoring_state(self) -> dict[str, Any]:
+        """Get self-monitoring state for API."""
+        if not self._monitoring:
+            return {}
+        try:
+            return {
+                "decision_confidence": getattr(self._monitoring, 'decision_confidence', 0),
+                "prediction_uncertainty": getattr(self._monitoring, 'prediction_uncertainty', 0),
+                "calibration_score": getattr(self._monitoring, 'calibration_score', 0),
+                "health_status": getattr(self._monitoring, 'health_status', 'healthy'),
+                "diagnosis": getattr(self._monitoring, '_last_diagnosis', {}),
+                "alerts": getattr(self._monitoring, '_alerts', [])[-5:],
+            }
+        except Exception:
+            return {}
+    
+    def _get_specialization_state(self) -> dict[str, Any]:
+        """Get specialization state for API."""
+        if not self._specialization:
+            return {}
+        try:
+            return {
+                "primary_domain": getattr(self._specialization, 'primary_domain', None),
+                "expertise_levels": getattr(self._specialization, 'expertise_levels', {}),
+                "niche_discovered": getattr(self._specialization, 'niche_discovered', None),
+                "specialization_score": getattr(self._specialization, 'specialization_score', 0),
+            }
+        except Exception:
+            return {}
+    
+    def _get_evolution_state(self) -> dict[str, Any]:
+        """Get evolution state for API."""
+        if not self._evolution:
+            return {}
+        try:
+            return {
+                "generation": getattr(self._evolution, 'generation', 0),
+                "parent_id": getattr(self._evolution, 'parent_id', None),
+                "offspring_ids": getattr(self._evolution, 'offspring_ids', []),
+                "fitness_score": getattr(self._evolution, 'fitness_score', 0),
+                "mutations": getattr(self._evolution, 'mutations', []),
+            }
+        except Exception:
+            return {}
+    
+    def _get_knowledge_transfer_state(self) -> dict[str, Any]:
+        """Get knowledge transfer state for API."""
+        if not self._knowledge_transfer:
+            return {}
+        try:
+            return {
+                "extracted": getattr(self._knowledge_transfer, '_extracted', [])[-10:],
+                "shared_with": getattr(self._knowledge_transfer, '_shared_with', []),
+                "received_from": getattr(self._knowledge_transfer, '_received_from', []),
+                "collective_contributions": getattr(self._knowledge_transfer, '_contributions', 0),
+            }
+        except Exception:
+            return {}
+    
+    def _get_outputs_state(self) -> dict[str, Any]:
+        """Get generated outputs state for API."""
+        if not self._generation:
+            return {}
+        try:
+            return {
+                "maps": getattr(self._generation, '_maps', [])[-5:],
+                "summaries": getattr(self._generation, '_summaries', [])[-5:],
+                "theories": getattr(self._generation, '_theories', [])[-5:],
+                "total_outputs": getattr(self._generation, '_total_outputs', 0),
+            }
+        except Exception:
+            return {}
 
     def get_id(self) -> str:
         """Return agent ID as string."""
@@ -333,7 +506,7 @@ class Agent:
 
     async def query_wikipedia(self, query: str, **kwargs) -> dict[str, Any]:
         """Query Wikipedia for knowledge."""
-        from knowledge import WikipediaSource
+        from src.data.sources import WikipediaSource
         
         wiki = WikipediaSource()
         
@@ -357,9 +530,9 @@ class Agent:
 
     async def query_ollama(self, prompt: str, model: str = "llama2", **kwargs) -> dict[str, Any]:
         """Query Ollama for knowledge or reasoning."""
-        from knowledge import OllamaGateway
+        from src.data.sources import OllamaSource
         
-        ollama = OllamaGateway()
+        ollama = OllamaSource()
         
         # Generate response
         response = await ollama.generate(prompt=prompt, model=model, **kwargs)
@@ -379,9 +552,9 @@ class Agent:
 
     async def search_web(self, query: str, provider: str = "duckduckgo", **kwargs) -> dict[str, Any]:
         """Search the web for information."""
-        from knowledge import DuckDuckGoSearchProvider
+        from src.data.sources import DuckDuckGoSearchSource
         
-        search = DuckDuckGoSearchProvider()
+        search = DuckDuckGoSearchSource()
         
         # Search using DuckDuckGo
         search_results = await search.search(query, **kwargs)
@@ -402,7 +575,7 @@ class Agent:
 
     async def query_reddit(self, subreddit: str, **kwargs) -> dict[str, Any]:
         """Query Reddit for discussions and knowledge."""
-        from knowledge import RedditSource
+        from src.data.sources import RedditSource
         
         reddit = RedditSource()
         
@@ -420,24 +593,24 @@ class Agent:
         
         return {"posts": posts, "subreddit": subreddit}
 
-    async def query_twitter(self, query: str, **kwargs) -> dict[str, Any]:
-        """Query Twitter/X for recent discussions."""
-        from knowledge import TwitterSource
+    async def query_x(self, query: str, **kwargs) -> dict[str, Any]:
+        """Query X for recent discussions."""
+        from src.data.sources import XSource
         
-        twitter = TwitterSource()
+        x = XSource()
         
-        # Search recent tweets
-        tweets = await twitter.search_recent_tweets(query, **kwargs)
+        # Search recent posts
+        posts = await x.search_recent_posts(query, **kwargs)
         
         # Store in semantic memory
-        if tweets and self._memory:
-            for tweet in tweets[:20]:  # Top 20 tweets
+        if posts and self._memory:
+            for post in posts[:20]:  # Top 20 posts
                 await self._memory.store_semantic(
-                    content=tweet.get('text', ''),
-                    metadata={"source": "twitter", "author": tweet.get('author_id', ''), "url": f"https://twitter.com/i/web/status/{tweet.get('id', '')}"}
+                    content=post.text if hasattr(post, 'text') else post.get('text', ''),
+                    metadata={"source": "x", "author": post.author_id if hasattr(post, 'author_id') else post.get('author_id', ''), "url": f"https://x.com/i/web/status/{post.id if hasattr(post, 'id') else post.get('id', '')}"}
                 )
         
-        return {"tweets": tweets, "query": query}
+        return {"posts": posts, "query": query}
 
     async def query_geo(
         self,
@@ -457,7 +630,7 @@ class Agent:
         Returns:
             Nearby geographic features and regions
         """
-        from knowledge import get_geo_source
+        from src.data.worlds.base.earth import get_geo_source
         
         geo = get_geo_source()
         
@@ -1104,16 +1277,26 @@ class Agent:
                     priority=current_goal.priority if hasattr(current_goal, 'priority') else 0.7,
                 ))
 
-        # Ensure we always have an exploration goal to encourage movement
-        explore_priority = max(0.4, min(0.9, 0.4 + exploration_signal * 0.4))
+        # Balance exploration and learning goals
+        # Both are equally important - agent should alternate between them
+        # Use exploration_signal to add slight variation, but keep them close
+        base_priority = 0.5
+        signal_influence = 0.15  # Reduced from 0.4 to keep goals balanced
+        random_noise = random.uniform(-0.05, 0.05)  # Small randomness for variety
+        
+        explore_priority = base_priority + exploration_signal * signal_influence + random_noise
+        learn_priority = base_priority + (1.0 - exploration_signal) * signal_influence - random_noise
+        
+        # Clamp to valid range
+        explore_priority = max(0.3, min(0.7, explore_priority))
+        learn_priority = max(0.3, min(0.7, learn_priority))
+        
         goals.append(Goal(
             id="explore_world",
             description="Explore new locations",
             priority=explore_priority,
         ))
 
-        # Keep a generic learning goal so knowledge gathering still happens
-        learn_priority = max(0.3, 0.6 - exploration_signal * 0.2)
         goals.append(Goal(
             id="increase_knowledge",
             description="Learn new knowledge",
@@ -2032,7 +2215,7 @@ class Agent:
             
             try:
                 # Import here to avoid circular dependency
-                from knowledge.geo import GeoSource
+                from src.data.worlds.base.earth import GeoSource
                 
                 # Get location context (nearby POIs, regions, features)
                 geo = GeoSource()
@@ -2518,7 +2701,7 @@ class Agent:
         Returns:
             Navigation result with path and final location
         """
-        from knowledge import get_geo_source
+        from src.data.worlds.base.earth import get_geo_source
         from db.database import async_session_maker
         from sqlalchemy import text
         

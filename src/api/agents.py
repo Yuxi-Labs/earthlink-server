@@ -32,12 +32,6 @@ class AgentResponse(BaseModel):
     metrics: dict[str, Any]
 
 
-class AgentAssignWorld(BaseModel):
-    """Schema for assigning agent to world."""
-
-    world_id: str
-
-
 class AgentCheckpoint(BaseModel):
     """Schema for checkpoint operations."""
 
@@ -125,25 +119,8 @@ async def destroy_agent(
     return {"message": "Agent destroyed", "id": str(agent_id)}
 
 
-@router.post("/{agent_id}/assign-world")
-async def assign_world(
-    agent_id: UUID,
-    assignment: AgentAssignWorld,
-    simulation=Depends(get_simulation),
-) -> dict[str, Any]:
-    """Assign agent to explore a world."""
-    if simulation is None:
-        raise HTTPException(status_code=503, detail="Simulation not running")
-
-    success = await simulation.assign_agent_to_world(agent_id, assignment.world_id)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to assign agent to world")
-
-    return {
-        "agent_id": str(agent_id),
-        "world_id": assignment.world_id,
-        "message": "Agent assigned to world",
-    }
+# Note: assign_agent_to_world removed - all agents are in the one world (Earthlink)
+# which is owned by the simulation. No explicit assignment needed.
 
 
 @router.get("/{agent_id}/metrics")

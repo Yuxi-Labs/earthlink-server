@@ -1,1 +1,1 @@
-"""Tests package."""
+"""Tests for the Earthlink server."""

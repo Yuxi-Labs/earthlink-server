@@ -80,7 +80,8 @@ async def health_status(simulation=Depends(get_simulation)) -> dict[str, Any]:
             "state": simulation.state.name,
             "total_steps": simulation._total_steps,
             "active_agents": len(simulation._agents),
-            "active_worlds": len(simulation.world_registry._worlds),
+            "world": simulation.world.name if simulation.world else None,
+            "world_loaded": simulation.world._is_loaded if simulation.world else False,
         }
         
         # Ray cluster info
@@ -182,7 +183,7 @@ async def health_metrics(simulation=Depends(get_simulation)) -> dict[str, Any]:
     if simulation:
         metrics["simulation_total_steps"] = simulation._total_steps
         metrics["simulation_active_agents"] = len(simulation._agents)
-        metrics["simulation_active_worlds"] = len(simulation.world_registry._worlds)
+        metrics["simulation_world_loaded"] = 1 if (simulation.world and simulation.world._is_loaded) else 0
         metrics["simulation_state"] = 1 if simulation.state.name == "RUNNING" else 0
         
         # Episode metrics

@@ -1,11 +1,9 @@
-"""Simulation Runner - orchestrates agents and worlds."""
+"""Simulation Runner - orchestrates agents and the world."""
 
 import asyncio
 import os
 from collections import defaultdict
-from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, auto
 from typing import Any
 from uuid import UUID
 
@@ -15,46 +13,11 @@ from sqlalchemy import select
 from src.agents.core import AgentActor
 from src.db.database import async_session_maker
 from src.db.models import Agent as AgentModel
+from .config import SimulationConfig, SimulationState
 from .events import Event, EventBus, EventType
-from .world import World, WorldRegistry
+from .worlds.base.earth import Earth
 from .episode import EpisodeManager
 from .persistence import StatePersistence
-
-
-class SimulationState(Enum):
-    """State of the simulation."""
-
-    IDLE = auto()
-    RUNNING = auto()
-    PAUSED = auto()
-    STOPPED = auto()
-
-
-@dataclass
-class SimulationConfig:
-    """Configuration for simulation."""
-
-    # Timing
-    steps_per_second: float = 10.0
-    max_steps: int | None = None
-    speed_multiplier: float = 1.0  # Speed control: 0.1 = slow, 1.0 = normal, 10.0 = fast
-
-    # Agents
-    max_agents: int = 100
-    target_agents: int = 5  # Desired steady-state population
-    spawn_interval_seconds: float = 5.0  # How often to check spawn conditions
-    agent_config: dict[str, Any] = field(default_factory=dict)
-
-    # Learning
-    train_every_n_steps: int = 4
-    batch_size: int = 32
-
-    # Checkpointing
-    checkpoint_every_n_steps: int = 1000
-    checkpoint_dir: str = "checkpoints"
-
-    # Monitoring
-    log_every_n_steps: int = 100
 
 
 class SimulationRunner:
@@ -77,17 +40,14 @@ class SimulationRunner:
 
         # Components
         self.event_bus = EventBus()
-        self.world_registry = WorldRegistry()
         self.episode_manager = EpisodeManager(max_episodes=1000)
         self.state_persistence = StatePersistence(storage_dir="snapshots")
         
-        # Register world types
-        from src.worlds.earthlink import EarthlinkWorld
-        self.world_registry.register_world_class("earthlink", EarthlinkWorld)
+        # The world - simulation's state (created on initialize)
+        self.world: Earth | None = None
 
         # Agent management
         self._agents: dict[UUID, ray.ObjectRef] = {}
-        self._agent_worlds: dict[UUID, str] = {}  # agent_id -> world_id
 
         # Background tasks
         self._spawn_task: asyncio.Task | None = None
@@ -103,8 +63,13 @@ class SimulationRunner:
         self._cluster_manager = None
         self._use_cluster = False
 
-    async def initialize(self, use_cluster: bool = False, cluster_config=None) -> None:
-        """Initialize simulation resources."""
+    async def initialize(
+        self,
+        use_cluster: bool = False,
+        cluster_config=None,
+        skip_db_restore: bool = False,
+    ) -> None:
+        """Initialize simulation resources including the world."""
         self._use_cluster = use_cluster
         
         if use_cluster:
@@ -121,12 +86,23 @@ class SimulationRunner:
                 ray.init(ignore_reinit_error=True)
                 self._ray_initialized = True
 
+        # Create and load Earth (simulation's state)
+        self.world = Earth()
+        await self.world.load()
+        
+        self.event_bus.publish(Event(
+            event_type=EventType.WORLD_LOADED,
+            source_world_id=self.world.id,
+        ))
+
         # Load persisted agents from database (only if enabled)
         restore_agents = os.getenv("RESTORE_AGENTS_ON_STARTUP", "true").lower() == "true"
-        if restore_agents:
+        if restore_agents and not skip_db_restore:
             await self._load_persisted_agents()
-        else:
+        elif not restore_agents:
             print("Agent restoration disabled (RESTORE_AGENTS_ON_STARTUP=false)")
+        else:
+            print("Agent restoration skipped because snapshot will be loaded")
 
         self.event_bus.publish(Event(
             event_type=EventType.SIMULATION_STARTED,
@@ -171,9 +147,10 @@ class SimulationRunner:
         for agent_id in agent_ids:
             await self.destroy_agent(agent_id)
 
-        # Unload all worlds
-        for world in self.world_registry._worlds.values():
-            await world.unload()
+        # Unload world
+        if self.world:
+            await self.world.unload()
+            self.world = None
         
         # Shutdown cluster if used
         if self._cluster_manager:
@@ -303,7 +280,6 @@ class SimulationRunner:
 
         # Remove from tracking
         del self._agents[agent_id]
-        self._agent_worlds.pop(agent_id, None)
 
         # Remove from database
         from ..db.database import async_session_maker
@@ -324,39 +300,6 @@ class SimulationRunner:
 
         return True
 
-    async def assign_agent_to_world(
-        self,
-        agent_id: UUID,
-        world_id: str,
-    ) -> bool:
-        """Assign an agent to explore a world."""
-        print(f"[DEBUG] Assigning agent {agent_id} to world {world_id}")
-        
-        if agent_id not in self._agents:
-            print(f"[DEBUG] Agent {agent_id} not in self._agents")
-            return False
-
-        world = self.world_registry.get_world(world_id)
-        if world is None:
-            print(f"[DEBUG] World {world_id} not found in registry")
-            return False
-
-        # Load world if needed
-        print(f"[DEBUG] World found, _is_loaded={getattr(world, '_is_loaded', 'MISSING')}")
-        if not world._is_loaded:
-            await world.load()
-            self.event_bus.publish(Event(
-                event_type=EventType.WORLD_LOADED,
-                source_world_id=world_id,
-            ))
-
-        # Update agent's target world
-        agent_ref = self._agents[agent_id]
-        await agent_ref.set_target_world.remote(world_id)
-
-        self._agent_worlds[agent_id] = world_id
-        print(f"[DEBUG] Successfully assigned agent {agent_id} to world {world_id}")
-        return True
 
     async def get_agent_state(self, agent_id: UUID) -> dict[str, Any] | None:
         """Get agent state."""
@@ -377,32 +320,20 @@ class SimulationRunner:
         return states
 
     # -------------------------------------------------------------------------
-    # World Management
+    # World State
     # -------------------------------------------------------------------------
 
-    def create_world(
-        self,
-        world_id: str,
-        name: str,
-        world_type: str = "text",
-        **config: Any,
-    ) -> str:
-        """Create a new world."""
-        world = self.world_registry.create_world(
-            world_id=world_id,
-            name=name,
-            world_type=world_type,
-            **config,
-        )
-        return world.id
+    def get_world_state(self) -> dict[str, Any]:
+        """Get current world state."""
+        if not self.world:
+            return {}
+        return self.world.get_metadata()
 
-    def get_world(self, world_id: str) -> World | None:
-        """Get world by ID."""
-        return self.world_registry.get_world(world_id)
-
-    def list_worlds(self) -> list[dict[str, Any]]:
-        """List all worlds."""
-        return self.world_registry.list_worlds()
+    def get_world_metadata(self) -> dict[str, Any]:
+        """Get world metadata."""
+        if not self.world:
+            return {}
+        return self.world.get_metadata()
 
     # -------------------------------------------------------------------------
     # Simulation Loop
@@ -568,110 +499,6 @@ class SimulationRunner:
             except:
                 pass
 
-    async def _agent_step(
-        self,
-        agent_id: UUID,
-        agent_ref: ray.ObjectRef,
-        world: World,
-    ) -> None:
-        """
-        Run one step for a single agent.
-        
-        Agent autonomously decides whether to:
-        - Explore knowledge (query Wikipedia, Reddit, etc.)
-        - Execute policy action in world
-        """
-        try:
-            # Agent autonomously decides what to do
-            # This uses curiosity/prediction error to decide
-            action = await agent_ref.autonomous_step.remote()
-
-            # Publish event
-            self.event_bus.publish(Event(
-                event_type=EventType.AGENT_ACTION,
-                source_agent_id=agent_id,
-                source_world_id=world.id,
-                data={"action": action},
-            ))
-
-            # If action is knowledge exploration, no world interaction needed
-            if action.get("type") == "knowledge_exploration":
-                # Agent explored external knowledge
-                self.event_bus.publish(Event(
-                    event_type=EventType.AGENT_LEARNING,
-                    source_agent_id=agent_id,
-                    data={
-                        "topic": action.get("topic"),
-                        "knowledge_gained": action.get("knowledge_gained", 0),
-                    },
-                ))
-                return
-
-            # Otherwise, interact with world for policy-based action
-            # Get current observation from world
-            observation = await world._get_observation()
-
-            # World processes action
-            next_observation, reward, done, info = await world.step(action)
-
-            self.event_bus.publish(Event(
-                event_type=EventType.AGENT_REWARD,
-                source_agent_id=agent_id,
-                data={"reward": reward},
-            ))
-
-            # Track episode reward
-            self._episode_rewards[agent_id].append(reward)
-
-            # Agent learns from transition
-            if self._total_steps % self.config.train_every_n_steps == 0:
-                import torch
-
-                # Encode observations for transition
-                obs_vector = self._encode_observation(observation)
-                next_obs_vector = self._encode_observation(next_observation)
-
-                transition = {
-                    "state": torch.tensor(obs_vector, dtype=torch.float32),
-                    "action": torch.tensor(action.get("action", 0), dtype=torch.float32),
-                    "reward": reward,
-                    "next_state": torch.tensor(next_obs_vector, dtype=torch.float32),
-                    "done": done,
-                    "info": info,
-                }
-
-                losses = await agent_ref.learn.remote(transition)
-
-                self.event_bus.publish(Event(
-                    event_type=EventType.AGENT_LEARNED,
-                    source_agent_id=agent_id,
-                    data={"losses": losses},
-                ))
-
-            # Handle episode end
-            if done:
-                await world.reset()
-                episode_reward = sum(self._episode_rewards[agent_id])
-                self._episode_rewards[agent_id] = []
-
-                self.event_bus.publish(Event(
-                    event_type=EventType.WORLD_UPDATED,
-                    source_world_id=world.id,
-                    data={"event": "episode_end", "total_reward": episode_reward},
-                ))
-
-        except Exception as e:
-            print(f"Error in agent step {agent_id}: {e}")
-
-    def _encode_observation(self, observation: dict[str, Any]) -> list[float]:
-        """Encode observation to vector (placeholder)."""
-        # TODO: Use proper encoder
-        if "vector" in observation:
-            return observation["vector"]
-
-        # Default: zero vector
-        return [0.0] * 256
-
     async def _save_checkpoints(self) -> None:
         """Save checkpoints for all agents."""
         for agent_id, agent_ref in self._agents.items():
@@ -688,12 +515,8 @@ class SimulationRunner:
 
     def _log_stats(self) -> None:
         """Log simulation statistics."""
-        stats = {
-            "total_steps": self._total_steps,
-            "num_agents": len(self._agents),
-            "num_worlds": len(self.world_registry._worlds),
-        }
-        print(f"[Step {self._total_steps}] Agents: {len(self._agents)}, Worlds: {len(self.world_registry._worlds)}")
+        world_name = self.world.name if self.world else "None"
+        print(f"[Step {self._total_steps}] Agents: {len(self._agents)}, World: {world_name}")
 
     # -------------------------------------------------------------------------
     # Control
@@ -725,7 +548,8 @@ class SimulationRunner:
             "state": self.state.name,
             "total_steps": self._total_steps,
             "num_agents": len(self._agents),
-            "num_worlds": len(self.world_registry._worlds),
+            "world": self.world.name if self.world else None,
+            "world_loaded": self.world._is_loaded if self.world else False,
             "event_history_size": len(self.event_bus._history),
         }
         

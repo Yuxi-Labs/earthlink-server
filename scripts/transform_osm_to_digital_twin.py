@@ -9,23 +9,192 @@ from sqlalchemy import text
 
 DATABASE_URL = "postgresql+asyncpg://earthlink:earthlink@db:5432/earthlink"
 
-async def transform_osm_data():
-    """Transform OSM tables into digital twin schema"""
-    
-    engine = create_async_engine(DATABASE_URL)
-    
+DDL_STATEMENTS = [
+    # Buildings
+    """
+    CREATE TABLE IF NOT EXISTS buildings (
+        id BIGSERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        name TEXT,
+        building_type TEXT,
+        height NUMERIC,
+        min_height NUMERIC,
+        levels INTEGER,
+        footprint geometry(Polygon, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_buildings_osm_id ON buildings(osm_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_buildings_footprint ON buildings USING GIST (footprint);
+    """,
+
+    # Roads
+    """
+    CREATE TABLE IF NOT EXISTS roads (
+        id BIGSERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        name TEXT,
+        road_type TEXT,
+        surface TEXT,
+        lanes INTEGER,
+        max_speed_kph INTEGER,
+        oneway BOOLEAN,
+        geom geometry(LineString, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_roads_osm_id ON roads(osm_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_roads_geom ON roads USING GIST (geom);
+    """,
+
+    # Places
+    """
+    CREATE TABLE IF NOT EXISTS places (
+        id BIGSERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        name TEXT,
+        place_type TEXT,
+        population BIGINT,
+        geom geometry(Point, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_places_osm_id ON places(osm_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_places_geom ON places USING GIST (geom);
+    """,
+
+    # Water features
+    """
+    CREATE TABLE IF NOT EXISTS water_features (
+        id BIGSERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        name TEXT,
+        water_type TEXT,
+        geom geometry(Geometry, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_water_osm_id ON water_features(osm_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_water_geom ON water_features USING GIST (geom);
+    """,
+
+    # POIs
+    """
+    CREATE TABLE IF NOT EXISTS pois (
+        id BIGSERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        name TEXT,
+        poi_type TEXT,
+        category TEXT,
+        geom geometry(Point, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_pois_osm_id ON pois(osm_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_pois_geom ON pois USING GIST (geom);
+    """,
+
+    # Land cover
+    """
+    CREATE TABLE IF NOT EXISTS land_cover (
+        id BIGSERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        name TEXT,
+        landuse_type TEXT,
+        natural_type TEXT,
+        geom geometry(Polygon, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_landcover_osm_id ON land_cover(osm_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_landcover_geom ON land_cover USING GIST (geom);
+    """,
+
+    # Boundaries
+    """
+    CREATE TABLE IF NOT EXISTS boundaries (
+        id BIGSERIAL PRIMARY KEY,
+        osm_id BIGINT,
+        name TEXT,
+        boundary_type TEXT,
+        admin_level INTEGER,
+        geom geometry(Geometry, 4326),
+        properties JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_boundaries_osm_id ON boundaries(osm_id);
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_boundaries_geom ON boundaries USING GIST (geom);
+    """,
+]
+
+
+async def ensure_schema(engine):
+    """Create tables and unique indexes if they are missing (committed separately)."""
     async with engine.begin() as conn:
+        for stmt in DDL_STATEMENTS:
+            await conn.execute(text(stmt))
+
+
+async def transform_osm_data():
+    """Transform OSM tables into digital twin schema, idempotently."""
+
+    engine = create_async_engine(DATABASE_URL)
+
+    # Ensure schema in its own transaction so DDL is persisted even if inserts fail
+    await ensure_schema(engine)
+
+    async with engine.begin() as conn:
+        # Make sure tables and indexes exist before inserts (already done, but safe)
+        for stmt in DDL_STATEMENTS:
+            await conn.execute(text(stmt))
+
         print("=" * 80)
         print("TRANSFORMING OSM DATA TO DIGITAL TWIN SCHEMA")
         print("=" * 80)
         print()
-        
+
+        # Truncate all tables first for idempotent runs
+        print("Truncating existing data...")
+        await conn.execute(text("""
+            TRUNCATE buildings, roads, places, water_features, pois, land_cover, boundaries;
+        """))
+        print("  ✓ Tables truncated")
+        print()
+
         # 1. Transform buildings
         print("Transforming buildings...")
         await conn.execute(text("""
             INSERT INTO buildings (
                 osm_id,
-                name, 
+                name,
                 building_type,
                 height,
                 min_height,
@@ -62,14 +231,13 @@ async def transform_osm_data():
                 way::geometry(Polygon, 4326) as footprint,
                 hstore_to_jsonb(tags) as properties
             FROM planet_osm_polygon
-            WHERE building IS NOT NULL
-            ON CONFLICT (osm_id) DO NOTHING;
+            WHERE building IS NOT NULL;
         """))
-        
+
         buildings_count = await conn.scalar(text("SELECT COUNT(*) FROM buildings"))
-        print(f"  ✓ Inserted {buildings_count:,} buildings")
+        print(f"  ✓ Upserted {buildings_count:,} buildings")
         print()
-        
+
         # 2. Transform roads
         print("Transforming roads...")
         await conn.execute(text("""
@@ -104,14 +272,13 @@ async def transform_osm_data():
                 ST_Force2D(way)::geometry(LineString, 4326) as geom,
                 hstore_to_jsonb(tags) as properties
             FROM planet_osm_line
-            WHERE highway IS NOT NULL
-            ON CONFLICT (osm_id) DO NOTHING;
+            WHERE highway IS NOT NULL;
         """))
-        
+
         roads_count = await conn.scalar(text("SELECT COUNT(*) FROM roads"))
-        print(f"  ✓ Inserted {roads_count:,} roads")
+        print(f"  ✓ Upserted {roads_count:,} roads")
         print()
-        
+
         # 3. Transform places (POIs)
         print("Transforming places...")
         await conn.execute(text("""
@@ -134,14 +301,13 @@ async def transform_osm_data():
                 ST_Force2D(way)::geometry(Point, 4326) as geom,
                 hstore_to_jsonb(tags) as properties
             FROM planet_osm_point
-            WHERE place IS NOT NULL
-            ON CONFLICT (osm_id) DO NOTHING;
+            WHERE place IS NOT NULL;
         """))
-        
+
         places_count = await conn.scalar(text("SELECT COUNT(*) FROM places"))
-        print(f"  ✓ Inserted {places_count:,} places")
+        print(f"  ✓ Upserted {places_count:,} places")
         print()
-        
+
         # 4. Transform water features
         print("Transforming water features...")
         await conn.execute(text("""
@@ -166,10 +332,9 @@ async def transform_osm_data():
                 ST_Force2D(way)::geometry(Geometry, 4326) as geom,
                 hstore_to_jsonb(tags) as properties
             FROM planet_osm_polygon
-            WHERE "natural" = 'water' OR waterway IS NOT NULL
-            ON CONFLICT (osm_id) DO NOTHING;
+            WHERE "natural" = 'water' OR waterway IS NOT NULL;
         """))
-        
+
         await conn.execute(text("""
             INSERT INTO water_features (
                 osm_id,
@@ -185,14 +350,13 @@ async def transform_osm_data():
                 ST_Force2D(way)::geometry(Geometry, 4326) as geom,
                 hstore_to_jsonb(tags) as properties
             FROM planet_osm_line
-            WHERE waterway IS NOT NULL
-            ON CONFLICT (osm_id) DO NOTHING;
+            WHERE waterway IS NOT NULL;
         """))
-        
+
         water_count = await conn.scalar(text("SELECT COUNT(*) FROM water_features"))
-        print(f"  ✓ Inserted {water_count:,} water features")
+        print(f"  ✓ Upserted {water_count:,} water features")
         print()
-        
+
         # 5. Transform POIs
         print("Transforming POIs...")
         await conn.execute(text("""
@@ -223,14 +387,13 @@ async def transform_osm_data():
             WHERE amenity IS NOT NULL 
                OR shop IS NOT NULL 
                OR tourism IS NOT NULL 
-               OR leisure IS NOT NULL
-            ON CONFLICT (osm_id) DO NOTHING;
+               OR leisure IS NOT NULL;
         """))
-        
+
         pois_count = await conn.scalar(text("SELECT COUNT(*) FROM pois"))
-        print(f"  ✓ Inserted {pois_count:,} POIs")
+        print(f"  ✓ Upserted {pois_count:,} POIs")
         print()
-        
+
         # 6. Transform land cover
         print("Transforming land cover...")
         await conn.execute(text("""
@@ -250,14 +413,13 @@ async def transform_osm_data():
                 ST_Force2D(way)::geometry(Polygon, 4326) as geom,
                 hstore_to_jsonb(tags) as properties
             FROM planet_osm_polygon
-            WHERE landuse IS NOT NULL OR "natural" IN ('wood', 'forest', 'grassland', 'scrub')
-            ON CONFLICT (osm_id) DO NOTHING;
+            WHERE landuse IS NOT NULL OR "natural" IN ('wood', 'forest', 'grassland', 'scrub');
         """))
-        
+
         landcover_count = await conn.scalar(text("SELECT COUNT(*) FROM land_cover"))
-        print(f"  ✓ Inserted {landcover_count:,} land cover areas")
+        print(f"  ✓ Upserted {landcover_count:,} land cover areas")
         print()
-        
+
         # 7. Transform boundaries
         print("Transforming boundaries...")
         await conn.execute(text("""
@@ -280,14 +442,13 @@ async def transform_osm_data():
                 ST_Force2D(way)::geometry(Geometry, 4326) as geom,
                 hstore_to_jsonb(tags) as properties
             FROM planet_osm_polygon
-            WHERE boundary IS NOT NULL
-            ON CONFLICT (osm_id) DO NOTHING;
+            WHERE boundary IS NOT NULL;
         """))
-        
+
         boundaries_count = await conn.scalar(text("SELECT COUNT(*) FROM boundaries"))
-        print(f"  ✓ Inserted {boundaries_count:,} boundaries")
+        print(f"  ✓ Upserted {boundaries_count:,} boundaries")
         print()
-        
+
         print("=" * 80)
         print("✓ TRANSFORMATION COMPLETE")
         print("=" * 80)
@@ -301,7 +462,7 @@ async def transform_osm_data():
         print(f"  - Land Cover: {landcover_count:,}")
         print(f"  - Boundaries: {boundaries_count:,}")
         print("=" * 80)
-    
+
     await engine.dispose()
 
 if __name__ == "__main__":
