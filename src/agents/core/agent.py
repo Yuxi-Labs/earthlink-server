@@ -1370,10 +1370,19 @@ class Agent:
         actual_outcome = {}  # Will populate based on action results
         
         if action_type == "move":
-            # Spatial exploration - move to new location
+            # Spatial exploration - move to new location within GB bounds
+            # GB bounding box: 49.9°N to 58.7°N, -8.2°W to 1.8°E
+            GB_BOUNDS = {
+                "min_lat": 49.9,
+                "max_lat": 58.7,
+                "min_lon": -8.2,
+                "max_lon": 1.8,
+            }
+            
             loc = self.state.location
-            current_lat = loc.x if loc and loc.x != 0 else -25.0  # Default to Australia
-            current_lon = loc.y if loc and loc.y != 0 else 134.0
+            # Default to London if no position set (NOT Australia!)
+            current_lat = loc.x if loc and loc.x != 0 else 51.5074
+            current_lon = loc.y if loc and loc.y != 0 else -0.1278
             
             # Move 1-50km in random direction
             distance_km = random.uniform(1, 50)
@@ -1381,6 +1390,10 @@ class Agent:
             new_lat, new_lon = self._calculate_destination(
                 current_lat, current_lon, distance_km, bearing
             )
+            
+            # Clamp to GB bounds - agents must stay within the virtual world
+            new_lat = max(GB_BOUNDS["min_lat"], min(GB_BOUNDS["max_lat"], new_lat))
+            new_lon = max(GB_BOUNDS["min_lon"], min(GB_BOUNDS["max_lon"], new_lon))
             
             # Update position
             self.set_earthlink_position(new_lat, new_lon, 0.0)
@@ -1471,10 +1484,7 @@ class Agent:
                         supporting=supporting
                     )
         
-        # 5. Update curiosity score
-        self.state.metrics.curiosity_score = exploration_signal
-
-        # 6. Self-monitoring: record performance and diagnostics
+        # 5. Self-monitoring: record performance and diagnostics
         step_duration_ms = (perf_counter() - step_start) * 1000
         prediction_error = getattr(prediction, "prediction_error", None) if prediction else None
         decision_conf = decision.confidence if decision else 0.0
@@ -2665,17 +2675,17 @@ class Agent:
         
         Args:
             region_bounds: Optional bounds {"lat_min", "lat_max", "lon_min", "lon_max"}
-                          Default: Australia bounds (OSM data coverage)
+                          Default: Great Britain bounds (the virtual world)
                           
         Returns:
             Exploration result with movement + knowledge gained
         """
-        # Default to Australia/Oceania bounds (where we have OSM data)
+        # Default to Great Britain bounds (the entire virtual world is GB)
         bounds = region_bounds or {
-            "lat_min": -47.0,  # Southern Australia
-            "lat_max": -10.0,  # Northern Australia
-            "lon_min": 110.0,  # Western Australia
-            "lon_max": 180.0,  # Eastern edge of Oceania
+            "lat_min": 49.9,   # Southern GB
+            "lat_max": 58.7,   # Northern GB (Scotland)
+            "lon_min": -8.2,   # Western GB (Wales/Scotland)
+            "lon_max": 1.8,    # Eastern GB
         }
         
         # Sample random location
@@ -2850,12 +2860,12 @@ class Agent:
         Returns:
             List of waypoints with planned route
         """
-        # Default to Australia/Oceania bounds
+        # Default to Great Britain bounds (the entire virtual world is GB)
         bounds = region_bounds or {
-            "lat_min": -47.0,
-            "lat_max": -10.0,
-            "lon_min": 110.0,
-            "lon_max": 180.0,
+            "lat_min": 49.9,   # Southern GB
+            "lat_max": 58.7,   # Northern GB (Scotland)
+            "lon_min": -8.2,   # Western GB (Wales/Scotland)
+            "lon_max": 1.8,    # Eastern GB
         }
         
         waypoints = []

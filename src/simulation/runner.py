@@ -191,11 +191,20 @@ class SimulationRunner:
         config: dict[str, Any] | None = None,
         placement_group: str | None = None,
     ) -> UUID:
-        """Spawn a new agent."""
+        """Spawn a new agent with individualized traits."""
         import random
 
-        # Merge with default config
+        # Start with default config, then overlay any provided config
         agent_config = {**self.config.agent_config, **(config or {})}
+        
+        # Generate individualized traits if not explicitly provided
+        # Each agent should be unique - they are not clones!
+        if "curiosity" not in agent_config:
+            agent_config["curiosity"] = random.uniform(0.3, 0.9)
+        if "risk_tolerance" not in agent_config:
+            agent_config["risk_tolerance"] = random.uniform(0.2, 0.8)
+        if "social_preference" not in agent_config:
+            agent_config["social_preference"] = random.uniform(0.1, 0.7)
 
         # Determine actor options
         actor_options = {}
@@ -616,19 +625,15 @@ class SimulationRunner:
                     print(f"[POPULATION] {current_count}/{target} agents - spawning {needed}")
                     
                     for i in range(needed):
-                        # Randomize individual traits
-                        curiosity = random.uniform(0.3, 0.9)
-                        config = {
-                            "curiosity": curiosity,
-                            "risk_tolerance": random.uniform(0.2, 0.8),
-                            "social_preference": random.uniform(0.1, 0.7),
-                        }
-                        
                         # Sequential agent naming: A1, A2, A3, ...
                         self._agent_counter += 1
                         agent_name = f"A{self._agent_counter}"
                         try:
-                            agent_id = await self.spawn_agent(name=agent_name, config=config)
+                            # spawn_agent now generates individualized traits automatically
+                            agent_id = await self.spawn_agent(name=agent_name)
+                            # Get the agent's actual curiosity for logging
+                            state = await self.get_agent_state(agent_id)
+                            curiosity = state.get("metrics", {}).get("curiosity_score", 0.5) if state else 0.5
                             print(f"[POPULATION] Auto-spawned {agent_name} (curiosity: {curiosity:.2f})")
                         except Exception as e:
                             print(f"[POPULATION] Failed to spawn {agent_name}: {e}")
