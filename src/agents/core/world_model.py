@@ -5,7 +5,7 @@ Data structures for agent world and agent models.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -17,7 +17,7 @@ class WorldModel:
     id: UUID = field(default_factory=uuid4)
     regions: list[dict[str, Any]] = field(default_factory=list)
     entities: list[dict[str, Any]] = field(default_factory=list)
-    last_updated: datetime = field(default_factory=datetime.utcnow)
+    last_updated: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float = 0.5
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,7 +38,7 @@ class AgentModel:
     traits: dict[str, Any] = field(default_factory=dict)
     intents: list[str] = field(default_factory=list)
     reliability: float = 0.5
-    last_seen: datetime = field(default_factory=datetime.utcnow)
+    last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,7 +58,7 @@ class Concept:
     label: str = ""
     exemplars: list[dict[str, Any]] = field(default_factory=list)
     cohesion: float = 0.0  # 0-1 clustering quality
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {

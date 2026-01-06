@@ -34,6 +34,12 @@ class Agent(Base):
     worlds_explored: Mapped[int] = mapped_column(default=0)
     collaboration_score: Mapped[float] = mapped_column(Float, default=0.0)
     innovation_index: Mapped[float] = mapped_column(Float, default=0.0)
+    
+    # Position tracking
+    world_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_position_update: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Configuration
     config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

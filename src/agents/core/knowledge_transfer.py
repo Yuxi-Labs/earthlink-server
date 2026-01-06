@@ -5,7 +5,7 @@ Knowledge Transfer capability: extract and share knowledge between agents.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -19,7 +19,7 @@ class Knowledge:
     content: dict[str, Any] = field(default_factory=dict)
     confidence: float = 0.5
     provenance: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -40,7 +40,7 @@ class TransferResult:
     recipient: str
     knowledge_id: str
     rationale: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {

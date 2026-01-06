@@ -7,7 +7,7 @@ Structure mirrors simulation/worlds/ - base vs exo, real vs virtual.
 import asyncio
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from .worlds.base.earth import NaturalEarthIngester, OSMIngester, GeofabrikIngester
@@ -81,7 +81,7 @@ class IngestionRunner:
             source="natural_earth",
             world="earth",
             world_type="base",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
         )
 
         try:
@@ -92,7 +92,7 @@ class IngestionRunner:
         except Exception as e:
             result.errors.append(str(e))
 
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(UTC)
         self.results.append(result)
         return result
 
@@ -102,7 +102,7 @@ class IngestionRunner:
             source="osm",
             world="earth",
             world_type="base",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
         )
 
         try:
@@ -113,7 +113,7 @@ class IngestionRunner:
         except Exception as e:
             result.errors.append(str(e))
 
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(UTC)
         self.results.append(result)
         return result
 
@@ -127,7 +127,7 @@ class IngestionRunner:
             source=f"geofabrik:{region_id}",
             world="earth",
             world_type="base",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
         )
 
         try:
@@ -138,7 +138,7 @@ class IngestionRunner:
         except Exception as e:
             result.errors.append(str(e))
 
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(UTC)
         self.results.append(result)
         return result
 

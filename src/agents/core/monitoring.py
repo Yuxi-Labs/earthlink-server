@@ -4,7 +4,7 @@ Tracks performance, uncertainty, and diagnostics over a rolling window.
 """
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 import math
 
@@ -82,7 +82,7 @@ class SelfMonitoringModule:
     ) -> None:
         self.samples.append(
             PerformanceSnapshot(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
                 step_duration_ms=step_duration_ms,
                 decision_confidence=max(0.0, min(decision_confidence, 1.0)),
                 prediction_error=prediction_error,

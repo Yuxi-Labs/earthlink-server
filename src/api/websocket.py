@@ -419,7 +419,7 @@ async def stream_agent_events(websocket: WebSocket, agent_id: str):
     """Stream real-time learning events for a specific agent."""
     from sqlalchemy import text
     from db.database import async_session_maker
-    from datetime import datetime
+    from datetime import UTC, datetime
     
     await websocket.accept()
     
@@ -427,7 +427,7 @@ async def stream_agent_events(websocket: WebSocket, agent_id: str):
         await websocket.send_json({
             "type": "connection_established",
             "agent_id": agent_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
         
         last_event_id = 0
@@ -473,7 +473,7 @@ async def stream_agent_events(websocket: WebSocket, agent_id: str):
                 await websocket.send_json({
                     "type": "error",
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 })
                 await asyncio.sleep(1)
     except WebSocketDisconnect:
@@ -485,7 +485,7 @@ async def stream_analytics(websocket: WebSocket):
     """Stream live analytics aggregations every 2 seconds."""
     from sqlalchemy import text
     from db.database import async_session_maker
-    from datetime import datetime
+    from datetime import UTC, datetime
     
     await websocket.accept()
     
@@ -493,7 +493,7 @@ async def stream_analytics(websocket: WebSocket):
         await websocket.send_json({
             "type": "connection_established",
             "stream": "analytics",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
         
         while True:
@@ -535,7 +535,7 @@ async def stream_analytics(websocket: WebSocket):
                             "last_activity": row.last_activity.isoformat() if row.last_activity else None,
                             "top_topics": top_topics,
                         },
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                     })
                 
                 await asyncio.sleep(2)
@@ -545,7 +545,7 @@ async def stream_analytics(websocket: WebSocket):
                 await websocket.send_json({
                     "type": "error",
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 })
                 await asyncio.sleep(2)
     except WebSocketDisconnect:

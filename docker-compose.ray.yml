@@ -79,4 +79,5 @@ volumes:
 
 networks:
   earthlink-net:
+    name: server_earthlink-net
     external: true

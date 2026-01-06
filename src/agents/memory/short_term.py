@@ -2,7 +2,7 @@
 
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import torch
@@ -13,7 +13,7 @@ class Observation:
     """Single observation with metadata."""
 
     tensor: torch.Tensor
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     source: str = "environment"
     metadata: dict[str, Any] = field(default_factory=dict)
 

@@ -10,7 +10,7 @@ Provides:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Optional
 import numpy as np
@@ -50,7 +50,7 @@ class LearningCurve:
     def add_performance(self, performance: float):
         """Add new performance measurement."""
         self.performance_history.append(performance)
-        self.timestamps.append(datetime.utcnow())
+        self.timestamps.append(datetime.now(UTC))
         
         # Calculate learning rate (recent improvement)
         if len(self.performance_history) >= 5:

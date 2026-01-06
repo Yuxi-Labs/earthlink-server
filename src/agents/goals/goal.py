@@ -1,7 +1,7 @@
 """Goal data structures."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum, auto
 from typing import Any
 from uuid import UUID, uuid4
@@ -73,7 +73,7 @@ class Goal:
     failures: int = 0
     
     # Time tracking
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     completed_at: datetime | None = None
     deadline: datetime | None = None
@@ -85,26 +85,26 @@ class Goal:
     def start(self) -> None:
         """Mark goal as active."""
         self.status = GoalStatus.ACTIVE
-        self.started_at = datetime.utcnow()
+        self.started_at = datetime.now(UTC)
         self.attempts += 1
 
     def achieve(self) -> None:
         """Mark goal as achieved."""
         self.status = GoalStatus.ACHIEVED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(UTC)
         self.progress = 1.0
         self.successes += 1
 
     def fail(self) -> None:
         """Mark goal as failed."""
         self.status = GoalStatus.FAILED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(UTC)
         self.failures += 1
 
     def abandon(self) -> None:
         """Abandon the goal."""
         self.status = GoalStatus.ABANDONED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(UTC)
 
     def suspend(self) -> None:
         """Temporarily suspend the goal."""
@@ -143,7 +143,7 @@ class Goal:
         Uses urgency to boost priority as deadline approaches.
         """
         if self.deadline:
-            time_remaining = (self.deadline - datetime.utcnow()).total_seconds()
+            time_remaining = (self.deadline - datetime.now(UTC)).total_seconds()
             if time_remaining <= 0:
                 urgency_boost = 1.0
             else:

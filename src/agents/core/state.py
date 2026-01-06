@@ -1,7 +1,7 @@
 """Agent state representation."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
@@ -136,8 +136,8 @@ class AgentState:
     status: AgentStatus = AgentStatus.IDLE
     location: Coordinates = field(default_factory=Coordinates)
     metrics: AgentMetrics = field(default_factory=AgentMetrics)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Current goal (if any)
     current_goal_id: UUID | None = None

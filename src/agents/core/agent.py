@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 from uuid import UUID
@@ -35,6 +35,10 @@ class Agent:
             self.state.id = agent_id
 
         self.config = config or {}
+
+        # Initialize individual curiosity from config (each agent is unique)
+        if "curiosity" in self.config:
+            self.state.metrics.curiosity_score = self.config["curiosity"]
 
         # Components (lazy initialized)
         self._memory: Any = None
@@ -296,15 +300,15 @@ class Agent:
         except Exception:
             return {}
 
-    def get_id(self) -> str:
-        """Return agent ID as string."""
-        return str(self.state.id)
+    def get_id(self) -> UUID:
+        """Return agent ID."""
+        return self.state.id
 
     def set_lifecycle(self, lifecycle: AgentLifecycle) -> None:
         """Transition agent lifecycle state."""
         old_lifecycle = self.state.lifecycle
         self.state.lifecycle = lifecycle
-        self.state.updated_at = datetime.utcnow()
+        self.state.updated_at = datetime.now(UTC)
         
         # Broadcast lifecycle change if event_bus available
         if hasattr(self, 'event_bus') and self.event_bus and old_lifecycle != lifecycle:
@@ -325,7 +329,7 @@ class Agent:
         """Update agent operational status (UI-facing)."""
         old_status = self.state.status
         self.state.status = status
-        self.state.updated_at = datetime.utcnow()
+        self.state.updated_at = datetime.now(UTC)
         
         # Broadcast status change if event_bus available
         if hasattr(self, 'event_bus') and self.event_bus and old_status != status:
@@ -345,7 +349,7 @@ class Agent:
     def set_target_world(self, world: str) -> None:
         """Set target world for specialization/deployment."""
         self.state.target_world = world
-        self.state.updated_at = datetime.utcnow()
+        self.state.updated_at = datetime.now(UTC)
 
     # -------------------------------------------------------------------------
     # Messaging
@@ -404,7 +408,7 @@ class Agent:
             type=mtype,
             priority=mpriority,
             sender_id=self.state.id,
-            recipient_id=UUID(recipient_id) if recipient_id else None,
+            recipient_id=recipient_id if isinstance(recipient_id, UUID) else UUID(recipient_id) if recipient_id else None,
             subject=subject,
             content=content,
             metadata=kwargs,
@@ -1357,7 +1361,7 @@ class Agent:
         self.state.metrics.decision_distribution[action_type] += 1
         
         # Update time alive
-        elapsed = (datetime.utcnow() - self.state.created_at).total_seconds() / 3600
+        elapsed = (datetime.now(UTC) - self.state.created_at).total_seconds() / 3600
         self.state.metrics.time_alive_hours = elapsed
         
         # Update developer metrics
@@ -1505,7 +1509,7 @@ class Agent:
         self.state.metrics.last_diagnosis = diagnosis.probable_cause
         self.state.metrics.goal_persistence = perf_report.goal_progress
         self.state.metrics.uncertainty_score = perf_report.uncertainty_score
-        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        self.state.metrics.last_activity_timestamp = datetime.now(UTC).isoformat()
 
         # Memory consolidation cadence
         self._maybe_consolidate_memory()
@@ -1588,7 +1592,7 @@ class Agent:
             outputs["theory"] = theory.to_dict()
 
         # Track latest activity timestamp for UI
-        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        self.state.metrics.last_activity_timestamp = datetime.now(UTC).isoformat()
 
         print(
             f"[GENERATE] Agent {self.state.name} produced outputs: "
@@ -1644,7 +1648,7 @@ class Agent:
     def _build_activity_history_from_metrics(self) -> list[dict[str, Any]]:
         """Construct lightweight activity history from existing metrics."""
         history: list[dict[str, Any]] = []
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Use decision distribution as proxy for domains
         for action, count in self.state.metrics.decision_distribution.items():
@@ -1717,7 +1721,7 @@ class Agent:
             result["collective_contribution"] = contributed
 
         # Track activity timestamp
-        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        self.state.metrics.last_activity_timestamp = datetime.now(UTC).isoformat()
 
         print(
             f"[KNOWLEDGE] Agent {self.state.name} shared knowledge on '{domain}' "
@@ -1760,7 +1764,7 @@ class Agent:
             "state": state.to_dict(),
         }
 
-        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        self.state.metrics.last_activity_timestamp = datetime.now(UTC).isoformat()
         print(f"[MODEL] Agent {self.state.name} updated models.")
         return report
 
@@ -1793,7 +1797,7 @@ class Agent:
         if other_agent_id:
             crossover_children = await self._evolution.crossover(other_agent_id)
 
-        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        self.state.metrics.last_activity_timestamp = datetime.now(UTC).isoformat()
         print(f"[EVOLVE] Agent {self.state.name} fitness {fitness_report.score:.2f}, spawned {variant_id}.")
 
         return {
@@ -1843,7 +1847,7 @@ class Agent:
             )
             result["direct"] = res.to_dict()
 
-        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        self.state.metrics.last_activity_timestamp = datetime.now(UTC).isoformat()
         print(f"[COMMUNICATE] Agent {self.state.name} communication event: {result.keys()}")
         return result
 
@@ -1889,7 +1893,7 @@ class Agent:
             failure_context=failure_context or {},
         )
 
-        self.state.metrics.last_activity_timestamp = datetime.utcnow().isoformat()
+        self.state.metrics.last_activity_timestamp = datetime.now(UTC).isoformat()
         print(f"[ADAPT] Agent {self.state.name} shift={shift_detected}, strategy={strategy.name}")
 
         return {
@@ -1915,7 +1919,7 @@ class Agent:
 
         # 4. Update metrics
         self.state.metrics.total_steps_executed += 1
-        self.state.updated_at = datetime.utcnow()
+        self.state.updated_at = datetime.now(UTC)
 
         return action
 
@@ -2150,7 +2154,7 @@ class Agent:
                 if current_goal.progress >= 1.0:
                     from ..goals import GoalStatus
                     current_goal.status = GoalStatus.ACHIEVED
-                    current_goal.completed_at = datetime.utcnow()
+                    current_goal.completed_at = datetime.now(UTC)
                     goal_achieved = True
                     # Clear current goal to allow new goal generation
                     self.state.current_goal_id = None

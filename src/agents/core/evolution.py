@@ -5,7 +5,7 @@ Evolution capability: self-replication, fitness evaluation, crossover.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -17,7 +17,7 @@ class FitnessReport:
     score: float
     components: dict[str, float]
     rationale: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {

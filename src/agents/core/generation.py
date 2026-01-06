@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Iterable
 from uuid import UUID, uuid4
 
@@ -28,7 +28,7 @@ class GeneratedMap:
     path: list[tuple[float, float]] = field(default_factory=list)
     hotspots: list[dict[str, Any]] = field(default_factory=list)
     summary: str = ""
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,7 +52,7 @@ class SummaryOutput:
     text: str = ""
     key_points: list[str] = field(default_factory=list)
     modality_counts: dict[str, int] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -73,7 +73,7 @@ class Theory:
     supporting_evidence: list[dict[str, Any]] = field(default_factory=list)
     confidence: float = 0.5
     contradictions: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {

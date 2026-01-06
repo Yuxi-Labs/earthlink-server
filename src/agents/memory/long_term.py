@@ -1,7 +1,7 @@
 """Long-term memory - vector store / embeddings for persistent knowledge."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -23,7 +23,7 @@ class LongTermMemoryEntry:
     content: str = ""
     source: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class LongTermMemory:
@@ -83,7 +83,7 @@ class LongTermMemory:
             metadatas=[{
                 "source": source,
                 **(metadata or {}),
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
             }],
         )
         

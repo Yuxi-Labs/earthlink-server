@@ -11,7 +11,7 @@ class EarthConfig:
     # Identity
     world_id: str = "earth"
     name: str = "Earth"
-    description: str = "Digital twin of Earth with real geography"
+    description: str = "Digital twin of Great Britain with real geography"
     
     # Movement
     step_size_km: float = 1.0
@@ -24,21 +24,26 @@ class EarthConfig:
     # Data source
     source_type: str = "postgis"
     
-    # Spawn locations (lat, lon) - currently Australia
+    # Spawn locations (lat, lon) - Great Britain cities
     spawn_locations: List[Tuple[float, float]] = field(default_factory=lambda: [
-        (-33.8688, 151.2093),  # Sydney
-        (-37.8136, 144.9631),  # Melbourne
-        (-27.4698, 153.0251),  # Brisbane
-        (-31.9523, 115.8613),  # Perth
-        (-34.9285, 138.6007),  # Adelaide
+        (51.5074456, -0.1277653),   # London
+        (52.4796992, -1.9026911),   # Birmingham
+        (53.4794892, -2.2451148),   # Manchester
+        (55.9533456, -3.1883749),   # Edinburgh
+        (51.4816546, -3.1791934),   # Cardiff
+        (51.4538022, -2.5972985),   # Bristol
+        (53.7974185, -1.5437941),   # Leeds
+        (53.4071991, -2.99168),     # Liverpool
+        (55.861155, -4.2501687),    # Glasgow
     ])
     
     # Geographic bounds for spawning (when not using specific locations)
+    # Great Britain bounding box: 49.9°N to 58.7°N, -8.2°W to 1.8°E
     spawn_bounds: dict = field(default_factory=lambda: {
-        "min_lat": -44.0,
-        "max_lat": -10.0,
-        "min_lon": 113.0,
-        "max_lon": 154.0,
+        "min_lat": 49.9,
+        "max_lat": 58.7,
+        "min_lon": -8.2,
+        "max_lon": 1.8,
     })
     
     # Environment simulation

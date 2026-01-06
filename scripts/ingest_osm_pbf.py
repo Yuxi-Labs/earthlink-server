@@ -49,10 +49,12 @@ def run_osm2pgsql(pbf_file: Path):
     print()
     
     # Set PostgreSQL env vars
-    env = {
+    import os
+    env = os.environ.copy()
+    env.update({
         "PGUSER": "earthlink",
         "PGPASSWORD": "earthlink"
-    }
+    })
     
     try:
         result = subprocess.run(
@@ -82,8 +84,18 @@ def run_osm2pgsql(pbf_file: Path):
         sys.exit(1)
 
 def main():
-    # PBF file location - matches download location
-    pbf_file = Path("/tmp/geofabrik/australia-oceania-latest.osm.pbf")
+    if len(sys.argv) < 2:
+        print("Usage: python ingest_osm_pbf.py <path-to-pbf-file>")
+        print()
+        print("Example:")
+        print("  python ingest_osm_pbf.py /tmp/geofabrik/great-britain-latest.osm.pbf")
+        sys.exit(1)
+    
+    pbf_file = Path(sys.argv[1])
+    
+    if not pbf_file.exists():
+        print(f"❌ File not found: {pbf_file}")
+        sys.exit(1)
     
     run_osm2pgsql(pbf_file)
 

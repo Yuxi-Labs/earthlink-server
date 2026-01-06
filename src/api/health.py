@@ -1,7 +1,7 @@
 """Health check and service monitoring endpoints."""
 
 from typing import Any
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 import ray
@@ -20,7 +20,7 @@ def get_simulation():
 @router.get("/health/live")
 async def liveness() -> dict[str, str]:
     """Kubernetes liveness probe - is the service running?"""
-    return {"status": "alive", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "alive", "timestamp": datetime.now(UTC).isoformat()}
 
 
 @router.get("/health/ready")
@@ -46,7 +46,7 @@ async def readiness(simulation=Depends(get_simulation)) -> dict[str, Any]:
     return {
         "status": "ready" if all_ready else "not_ready",
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -57,7 +57,7 @@ async def health_status(simulation=Depends(get_simulation)) -> dict[str, Any]:
     status = {
         "service": "earthlink-api",
         "version": "0.1.0",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "uptime_seconds": 0,  # TODO: Track from startup
     }
     

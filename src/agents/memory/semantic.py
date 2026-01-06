@@ -1,7 +1,7 @@
 """Semantic memory - knowledge graph for structured relationships."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Iterator
 from uuid import UUID, uuid4
 
@@ -17,7 +17,7 @@ class KnowledgeNode:
     node_type: str = "concept"  # concept, entity, fact, relation
     properties: dict[str, Any] = field(default_factory=dict)
     embedding: list[float] | None = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -29,7 +29,7 @@ class KnowledgeEdge:
     relation: str  # e.g., "is_a", "has_part", "causes", "related_to"
     weight: float = 1.0
     properties: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class SemanticMemory:
@@ -95,7 +95,7 @@ class SemanticMemory:
             relation=relation,
             weight=weight,
             properties=properties or {},
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
         )
 
         return True

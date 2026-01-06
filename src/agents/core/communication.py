@@ -5,7 +5,7 @@ Communication capability: structured messaging, negotiation, and broadcast.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Callable
 from uuid import UUID
 
@@ -19,7 +19,7 @@ class MessageResult:
     success: bool
     recipients: list[str]
     rationale: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {

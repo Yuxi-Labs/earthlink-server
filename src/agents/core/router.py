@@ -3,7 +3,7 @@
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Callable
 from uuid import UUID
 
@@ -24,7 +24,7 @@ class AgentHandle:
     actor_ref: ray.ObjectRef | None = None  # Ray actor reference
     mailbox: Mailbox = field(default_factory=lambda: Mailbox(UUID(int=0)))
     groups: set[str] = field(default_factory=set)
-    last_seen: datetime = field(default_factory=datetime.utcnow)
+    last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self):
         if self.mailbox.agent_id == UUID(int=0):

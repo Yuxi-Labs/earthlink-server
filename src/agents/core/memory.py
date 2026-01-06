@@ -6,7 +6,7 @@ automatic consolidation, relevance-based retrieval, and adaptive forgetting.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
@@ -41,10 +41,10 @@ class Memory:
     agent_id: str = ""
     memory_type: MemoryType = MemoryType.EPISODIC
     content: dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     importance: float = 0.5  # 0-1, affects retention
     access_count: int = 0  # How often accessed
-    last_accessed: datetime = field(default_factory=datetime.utcnow)
+    last_accessed: datetime = field(default_factory=lambda: datetime.now(UTC))
     embedding: list[float] | None = None  # Semantic embedding for retrieval
     tags: list[str] = field(default_factory=list)
     related_memories: list[UUID] = field(default_factory=list)
@@ -53,18 +53,18 @@ class Memory:
     
     def age_hours(self) -> float:
         """Get age of memory in hours."""
-        return (datetime.utcnow() - self.timestamp).total_seconds() / 3600
+        return (datetime.now(UTC) - self.timestamp).total_seconds() / 3600
     
     def recency_score(self) -> float:
         """Calculate recency score (more recent = higher score)."""
-        hours_since_access = (datetime.utcnow() - self.last_accessed).total_seconds() / 3600
+        hours_since_access = (datetime.now(UTC) - self.last_accessed).total_seconds() / 3600
         # Exponential decay: score = e^(-decay_rate * hours)
         return np.exp(-self.decay_rate * hours_since_access)
     
     def access(self):
         """Record memory access (strengthens memory)."""
         self.access_count += 1
-        self.last_accessed = datetime.utcnow()
+        self.last_accessed = datetime.now(UTC)
         # Accessing memory reduces decay rate (strengthens retention)
         self.decay_rate *= 0.9  # 10% reduction in decay each access
     
@@ -132,7 +132,7 @@ class AdvancedMemory:
         self.procedural_memory: list[Memory] = []
         
         # Consolidation tracking
-        self.last_consolidation = datetime.utcnow()
+        self.last_consolidation = datetime.now(UTC)
         
         # Statistics
         self.stats = {
@@ -291,7 +291,7 @@ class AdvancedMemory:
                 memories_to_keep.append(memory)
         
         self.working_memory = memories_to_keep
-        self.last_consolidation = datetime.utcnow()
+        self.last_consolidation = datetime.now(UTC)
         self.stats["memories_consolidated"] += consolidated_count
         self.stats["consolidations_performed"] += 1
         
@@ -354,7 +354,7 @@ class AdvancedMemory:
         memory_type: MemoryType = None,
     ) -> list[Memory]:
         """Retrieve recent memories within time window."""
-        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=hours)
         
         memories = self._get_memories_by_type(memory_type) if memory_type else (
             self.working_memory +

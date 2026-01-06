@@ -10,7 +10,7 @@ Provides intelligent decision-making capabilities:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Optional
 import numpy as np
@@ -102,7 +102,7 @@ class Decision:
     confidence: float  # 0-1, confidence in decision quality
     rationale: str  # Human-readable explanation
     alternatives_considered: int
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class DecisionModule:

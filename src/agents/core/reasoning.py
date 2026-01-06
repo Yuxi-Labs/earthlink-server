@@ -6,7 +6,7 @@ infer causal relationships, perform counterfactual reasoning.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
@@ -34,7 +34,7 @@ class Hypothesis:
     confidence: float = 0.5  # 0-1, how confident in this hypothesis
     supporting_evidence: list[dict] = field(default_factory=list)
     contradicting_evidence: list[dict] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     tested: bool = False
     confirmed: bool | None = None  # True=confirmed, False=rejected, None=unknown
     
@@ -74,7 +74,7 @@ class Prediction:
     confidence: float = 0.5
     actual_outcome: dict[str, Any] | None = None
     prediction_error: float | None = None  # How wrong was prediction
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
@@ -255,7 +255,7 @@ class ReasoningEngine:
         # Sort events by timestamp
         sorted_events = sorted(
             events,
-            key=lambda e: e.get("timestamp", datetime.utcnow())
+            key=lambda e: e.get("timestamp", datetime.now(UTC))
         )
         
         # Look for temporal patterns (A before B suggests A causes B)

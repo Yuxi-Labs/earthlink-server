@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -21,7 +21,7 @@ class SpecializationProfile:
     confidence: float  # detection confidence (0-1)
     evidence_count: int
     recency_bias: float
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -44,7 +44,7 @@ class ExpertiseEstimate:
     success_rate: float
     volume: int
     rationale: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -66,7 +66,7 @@ class Niche:
     saturation_score: float = 0.0  # lower = less crowded
     opportunity: float = 0.0  # higher = better niche
     rationale: str = ""
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         return {

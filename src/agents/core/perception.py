@@ -6,7 +6,7 @@ build contextual awareness of current state.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
@@ -34,7 +34,7 @@ class PerceptionResult:
     data: dict[str, Any]
     confidence: float  # 0-1, how confident in this perception
     attention_score: float  # 0-1, how relevant to current goals
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
@@ -233,7 +233,7 @@ class PerceptionModule:
         environment: dict[str, Any],
     ) -> PerceptionResult:
         """Perceive temporal patterns: time-based information."""
-        current_time = datetime.utcnow()
+        current_time = datetime.now(UTC)
         
         # Detect patterns in perception history
         patterns = self._detect_temporal_patterns()

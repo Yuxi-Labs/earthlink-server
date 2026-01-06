@@ -1,7 +1,7 @@
 """Agent-to-agent messaging system."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum, auto
 from typing import Any
 from uuid import UUID, uuid4
@@ -71,7 +71,7 @@ class Message:
     reply_to: UUID | None = None  # Reference to previous message
 
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     ttl: int | None = None  # Time-to-live in seconds
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -153,7 +153,7 @@ class Mailbox:
             self._cleanup_inbox()
 
         message.delivered = True
-        message.delivered_at = datetime.utcnow()
+        message.delivered_at = datetime.now(UTC)
         self.inbox.append(message)
         return True
 
@@ -179,7 +179,7 @@ class Mailbox:
         for msg in self.inbox:
             if msg.id == message_id:
                 msg.read = True
-                msg.read_at = datetime.utcnow()
+                msg.read_at = datetime.now(UTC)
                 return True
         return False
 
@@ -189,7 +189,7 @@ class Mailbox:
         for msg in self.inbox:
             if not msg.read:
                 msg.read = True
-                msg.read_at = datetime.utcnow()
+                msg.read_at = datetime.now(UTC)
                 count += 1
         return count
 
@@ -206,7 +206,7 @@ class Mailbox:
     def _cleanup_inbox(self) -> None:
         """Remove old low-priority messages to make room."""
         # Keep high-priority and recent messages
-        cutoff = datetime.utcnow()
+        cutoff = datetime.now(UTC)
         kept = []
         for msg in self.inbox:
             if msg.priority >= MessagePriority.HIGH:

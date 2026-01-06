@@ -1,7 +1,7 @@
 """Events for simulation communication."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum, auto
 from typing import Any
 from uuid import UUID, uuid4
@@ -52,7 +52,7 @@ class Event:
 
     id: UUID = field(default_factory=uuid4)
     event_type: EventType = EventType.AGENT_ACTION
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Source
     source_agent_id: UUID | None = None
