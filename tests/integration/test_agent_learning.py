@@ -77,7 +77,7 @@ async def test_agent_autonomous_learning(monkeypatch):
 
     # Stub learn to increment training metrics
     def fake_learn(transition):
-        agent.state.metrics.training_steps += 1
+        agent.state.metrics.training_updates += 1
         agent.state.metrics.last_training_loss = 0.123
         return {"loss": 0.123}
 

@@ -125,9 +125,13 @@ class ReasoningEngine:
         self,
         agent_id: UUID,
         device: str = "cpu",
+        reasoning_depth: int = 3,
+        confidence_threshold: float = 0.6,
     ):
         self.agent_id = agent_id
         self.device = device
+        self.reasoning_depth = reasoning_depth
+        self.confidence_threshold = confidence_threshold
         
         # Active hypotheses
         self.hypotheses: dict[UUID, Hypothesis] = {}
@@ -148,6 +152,26 @@ class ReasoningEngine:
             "average_prediction_error": 0.5,
             "causal_relations_discovered": 0,
         }
+    
+    def reason(
+        self,
+        observations: list[dict],
+        context: dict[str, Any] | None = None,
+    ) -> Hypothesis:
+        """
+        Main reasoning method - generate hypotheses from observations.
+        
+        This is the primary entry point for the Reason capability.
+        Delegates to generate_hypothesis for actual logic.
+        
+        Args:
+            observations: Recent observations/events
+            context: Additional context (goals, state, etc.)
+        
+        Returns:
+            Hypothesis explaining observations
+        """
+        return self.generate_hypothesis(observations, context)
     
     def generate_hypothesis(
         self,
@@ -392,15 +416,26 @@ class ReasoningEngine:
         if not observations:
             return {}
         
-        # Collect all keys
+        # Collect all keys - handle both dicts and PerceptionResult objects
         all_keys = set()
         for obs in observations:
-            all_keys.update(obs.keys())
+            if hasattr(obs, 'keys'):
+                # It's a dict
+                all_keys.update(obs.keys())
+            elif hasattr(obs, '__dict__'):
+                # It's an object (like PerceptionResult), use its attributes
+                all_keys.update(vars(obs).keys())
         
         # Find common values
         common = {}
         for key in all_keys:
-            values = [obs.get(key) for obs in observations if key in obs]
+            values = []
+            for obs in observations:
+                if isinstance(obs, dict) and key in obs:
+                    values.append(obs.get(key))
+                elif hasattr(obs, key):
+                    values.append(getattr(obs, key))
+            
             if len(values) >= len(observations) * 0.5:  # At least 50% have this key
                 # Check if same value
                 unique_values = set(str(v) for v in values)

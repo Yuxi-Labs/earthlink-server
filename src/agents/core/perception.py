@@ -88,7 +88,7 @@ class PerceptionModule:
         self.perception_history: list[PerceptionResult] = []
         self.max_history = 100
     
-    async def perceive(
+    def perceive(
         self,
         environment: dict[str, Any],
         attention_focus: AttentionFocus | None = None,
@@ -114,17 +114,17 @@ class PerceptionModule:
         # Perceive each modality
         for modality in modalities:
             if modality == PerceptionModality.SPATIAL:
-                result = await self._perceive_spatial(environment)
+                result = self._perceive_spatial(environment)
             elif modality == PerceptionModality.SOCIAL:
-                result = await self._perceive_social(environment)
+                result = self._perceive_social(environment)
             elif modality == PerceptionModality.TEMPORAL:
-                result = await self._perceive_temporal(environment)
+                result = self._perceive_temporal(environment)
             elif modality == PerceptionModality.KNOWLEDGE:
-                result = await self._perceive_knowledge(environment)
+                result = self._perceive_knowledge(environment)
             elif modality == PerceptionModality.SELF:
-                result = await self._perceive_self(environment)
+                result = self._perceive_self(environment)
             elif modality == PerceptionModality.VISUAL:
-                result = await self._perceive_visual(environment)
+                result = self._perceive_visual(environment)
             else:
                 continue
             
@@ -174,7 +174,7 @@ class PerceptionModule:
         noise_reduction = 1.0 - (len(filtered) / max(len(raw_results), 1))
         return filtered, max(0.0, min(1.0, noise_reduction))
     
-    async def _perceive_spatial(
+    def _perceive_spatial(
         self,
         environment: dict[str, Any],
     ) -> PerceptionResult:
@@ -206,7 +206,7 @@ class PerceptionModule:
             attention_score=0.0,  # Will be set by attention mechanism
         )
     
-    async def _perceive_social(
+    def _perceive_social(
         self,
         environment: dict[str, Any],
     ) -> PerceptionResult:
@@ -228,7 +228,7 @@ class PerceptionModule:
             attention_score=0.0,
         )
     
-    async def _perceive_temporal(
+    def _perceive_temporal(
         self,
         environment: dict[str, Any],
     ) -> PerceptionResult:
@@ -255,7 +255,7 @@ class PerceptionModule:
             attention_score=0.0,
         )
     
-    async def _perceive_knowledge(
+    def _perceive_knowledge(
         self,
         environment: dict[str, Any],
     ) -> PerceptionResult:
@@ -279,7 +279,7 @@ class PerceptionModule:
             attention_score=0.0,
         )
     
-    async def _perceive_self(
+    def _perceive_self(
         self,
         environment: dict[str, Any],
     ) -> PerceptionResult:
@@ -302,7 +302,7 @@ class PerceptionModule:
             attention_score=0.0,
         )
 
-    async def _perceive_visual(
+    def _perceive_visual(
         self,
         environment: dict[str, Any],
     ) -> PerceptionResult:

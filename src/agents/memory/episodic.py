@@ -34,11 +34,13 @@ class EpisodicMemory:
     def __init__(
         self,
         capacity: int = 100_000,
+        device: str = "cpu",  # Added device parameter for compatibility
         prioritized: bool = True,
         alpha: float = 0.6,  # Priority exponent
         beta: float = 0.4,   # Importance sampling exponent
     ):
         self.capacity = capacity
+        self.device = device
         self.prioritized = prioritized
         self.alpha = alpha
         self.beta = beta
@@ -47,6 +49,10 @@ class EpisodicMemory:
         self.position = 0
         self.priorities = np.zeros(capacity, dtype=np.float32)
         self.max_priority = 1.0
+    
+    def store(self, transition: Transition) -> None:
+        """Store a transition (alias for push for consistency)."""
+        self.push(transition)
 
     def push(self, transition: Transition) -> None:
         """Add transition to replay buffer."""

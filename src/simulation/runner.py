@@ -197,14 +197,92 @@ class SimulationRunner:
         # Start with default config, then overlay any provided config
         agent_config = {**self.config.agent_config, **(config or {})}
         
-        # Generate individualized traits if not explicitly provided
-        # Each agent should be unique - they are not clones!
+        # =====================================================================
+        # AGENT INDIVIDUALITY SYSTEM - EXPLORATION FOCUS
+        # Each agent explores differently - varied exploration strategies
+        # =====================================================================
+        
+        # CORE EXPLORATION TRAITS (what drives exploration)
         if "curiosity" not in agent_config:
-            agent_config["curiosity"] = random.uniform(0.3, 0.9)
+            agent_config["curiosity"] = random.uniform(0.3, 0.9)  # Intrinsic drive to explore
         if "risk_tolerance" not in agent_config:
-            agent_config["risk_tolerance"] = random.uniform(0.2, 0.8)
-        if "social_preference" not in agent_config:
-            agent_config["social_preference"] = random.uniform(0.1, 0.7)
+            agent_config["risk_tolerance"] = random.uniform(0.2, 0.8)  # Bold vs cautious exploration
+        
+        # EXPLORATION STRATEGY (how they explore)
+        if "exploration_style" not in agent_config:
+            # 0.0 = systematic/methodical, 1.0 = random/spontaneous
+            agent_config["exploration_style"] = random.uniform(0.2, 0.8)
+        if "depth_vs_breadth" not in agent_config:
+            # 0.0 = breadth-first (cover wide area), 1.0 = depth-first (dig deep in one area)
+            agent_config["depth_vs_breadth"] = random.uniform(0.3, 0.7)
+        if "backtracking_tolerance" not in agent_config:
+            # How willing to revisit areas (0.0 = never backtrack, 1.0 = happy to revisit)
+            agent_config["backtracking_tolerance"] = random.uniform(0.1, 0.6)
+        if "path_memory_strength" not in agent_config:
+            # How well agent remembers where they've been (0.5 = weak, 1.0 = perfect)
+            agent_config["path_memory_strength"] = random.uniform(0.5, 1.0)
+        if "obstacle_persistence" not in agent_config:
+            # Give up easily vs push through (0.2 = give up fast, 0.9 = very persistent)
+            agent_config["obstacle_persistence"] = random.uniform(0.2, 0.9)
+        if "collaborative_exploration" not in agent_config:
+            # Explore alone vs coordinate with others (0.1 = solo, 0.8 = team player)
+            agent_config["collaborative_exploration"] = random.uniform(0.1, 0.8)
+        
+        # LEARNING FROM EXPLORATION (how they extract value from exploration)
+        if "learning_rate" not in agent_config:
+            agent_config["learning_rate"] = random.uniform(0.005, 0.02)  # How fast they learn from places
+        if "meta_learning_rate" not in agent_config:
+            agent_config["meta_learning_rate"] = random.uniform(0.001, 0.005)  # Learning better exploration strategies
+        if "memory_retention" not in agent_config:
+            agent_config["memory_retention"] = random.uniform(0.7, 0.95)  # Retaining knowledge of explored areas
+        
+        # PERCEPTION DURING EXPLORATION (what they notice)
+        if "perception_window" not in agent_config:
+            agent_config["perception_window"] = random.randint(5, 20)  # How much they notice while exploring
+        if "perception_confidence_floor" not in agent_config:
+            agent_config["perception_confidence_floor"] = random.uniform(0.2, 0.6)  # Filter for interesting things
+        if "detail_orientation" not in agent_config:
+            # 0.0 = big picture only, 1.0 = notice every detail
+            agent_config["detail_orientation"] = random.uniform(0.3, 0.9)
+        
+        # REASONING ABOUT EXPLORATION (understanding what they find)
+        if "reasoning_depth" not in agent_config:
+            agent_config["reasoning_depth"] = random.randint(2, 5)  # How deeply they analyze discoveries
+        if "hypothesis_confidence_threshold" not in agent_config:
+            agent_config["hypothesis_confidence_threshold"] = random.uniform(0.4, 0.8)  # When to trust patterns
+        if "pattern_sensitivity" not in agent_config:
+            # How quickly they spot patterns in explored areas (0.3 = slow, 0.9 = quick)
+            agent_config["pattern_sensitivity"] = random.uniform(0.3, 0.9)
+        
+        # DECISION-MAKING DURING EXPLORATION (where to go next)
+        if "decision_risk_bias" not in agent_config:
+            agent_config["decision_risk_bias"] = random.uniform(-0.3, 0.3)  # Conservative vs aggressive routes
+        if "exploration_bonus" not in agent_config:
+            agent_config["exploration_bonus"] = random.uniform(0.05, 0.2)  # Bonus for going somewhere new
+        if "goal_flexibility" not in agent_config:
+            # How easily they abandon current exploration goal for new opportunity
+            agent_config["goal_flexibility"] = random.uniform(0.2, 0.8)
+        
+        # ADAPTATION DURING EXPLORATION (handling the unexpected)
+        if "adaptation_speed" not in agent_config:
+            agent_config["adaptation_speed"] = random.uniform(0.3, 0.9)  # Adapting to new terrain/situations
+        if "strategy_stickiness" not in agent_config:
+            agent_config["strategy_stickiness"] = random.uniform(0.1, 0.7)  # Stick with exploration strategy vs try new approaches
+        
+        # SELF-MONITORING (tracking exploration effectiveness)
+        if "monitoring_window" not in agent_config:
+            agent_config["monitoring_window"] = random.randint(50, 200)  # How far back they assess performance
+        if "error_sensitivity" not in agent_config:
+            agent_config["error_sensitivity"] = random.uniform(0.5, 1.5)  # Learning from exploration mistakes
+        
+        # REMOVED: specialization (contradicts broad exploration)
+        # REMOVED: social_preference (not exploration-focused)
+        # REMOVED: message_frequency (not exploration-focused)
+        # REMOVED: trust_initial (not exploration-focused)
+        # REMOVED: mutation_rate (evolution not core to exploration)
+        # REMOVED: fitness_selectivity (evolution not core to exploration)
+        # REMOVED: transfer_willingness (not exploration-focused)
+        # REMOVED: collective_weight (not exploration-focused)
 
         # Determine actor options
         actor_options = {}

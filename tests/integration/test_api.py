@@ -1,7 +1,7 @@
 """Integration tests for API endpoints."""
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from uuid import uuid4
 
 from src.main import app
@@ -10,7 +10,7 @@ from src.main import app
 @pytest.mark.asyncio
 async def test_create_agent():
     """Test creating an agent via API."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/agents",
             json={"name": "TestAgent"},
@@ -25,7 +25,7 @@ async def test_create_agent():
 @pytest.mark.asyncio
 async def test_list_agents():
     """Test listing agents."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Create an agent first
         await client.post("/api/v1/agents", json={"name": "Agent1"})
         
@@ -40,7 +40,7 @@ async def test_list_agents():
 @pytest.mark.asyncio
 async def test_simulation_status():
     """Test getting simulation status."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/simulation/status")
         
         assert response.status_code == 200
@@ -52,7 +52,7 @@ async def test_simulation_status():
 @pytest.mark.asyncio
 async def test_simulation_start():
     """Test starting simulation."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/api/v1/simulation/start")
         
         assert response.status_code == 200

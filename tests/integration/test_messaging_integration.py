@@ -4,7 +4,7 @@ import pytest
 from uuid import uuid4
 
 from src.agents.core import MessageRouter, get_message_router, init_message_router
-from src.simulation.events import EventBus
+from src.simulation.events import EventBus, EventType
 
 
 @pytest.mark.asyncio
@@ -18,7 +18,7 @@ async def test_message_router_with_event_bus():
     def event_handler(event):
         events_received.append(event)
     
-    event_bus.subscribe(event_handler)
+    event_bus.subscribe(EventType.MESSAGE_SENT, event_handler)
     
     # Register agents
     agent1 = uuid4()

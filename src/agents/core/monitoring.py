@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 import math
 
 
@@ -65,9 +66,42 @@ def _percentile(values: list[float], pct: float) -> float:
 class SelfMonitoringModule:
     """Track own performance, uncertainty, and goal progress."""
 
-    def __init__(self, window: int = 100):
+    def __init__(self, agent_id: UUID | None = None, window: int = 100):
+        self.agent_id = agent_id
         self.window = window
         self.samples: deque[PerformanceSnapshot] = deque(maxlen=window)
+    
+    def monitor(
+        self,
+        performance_data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Main monitoring method - monitor agent performance.
+        
+        This is the primary entry point for the Self-monitor capability.
+        
+        Args:
+            performance_data: Optional performance data to analyze
+        
+        Returns:
+            Monitoring results and diagnostics
+        """
+        if not self.samples:
+            return {
+                "monitored": True,
+                "performance": "no_data",
+                "uncertainty": 0.5,
+            }
+        
+        # Get performance report
+        report = self.track_performance()
+        
+        return {
+            "monitored": True,
+            "performance": report.trend,
+            "uncertainty": report.uncertainty_score,
+            "avg_step_duration_ms": report.avg_step_duration_ms,
+        }
 
     def record_step(
         self,

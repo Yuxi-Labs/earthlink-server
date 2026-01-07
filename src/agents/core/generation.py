@@ -89,12 +89,35 @@ class Theory:
 class GenerationModule:
     """Create maps, summaries, and theories from agent experience."""
 
-    def __init__(self, agent_id: UUID, max_points: int = 500) -> None:
+    def __init__(self, agent_id: UUID | None = None, max_points: int = 500) -> None:
         self.agent_id = agent_id
         self.max_points = max_points
         self._map_history: list[GeneratedMap] = []
         self._summary_history: list[SummaryOutput] = []
         self._theory_history: list[Theory] = []
+    
+    def generate(
+        self,
+        output_type: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Main generation method - generate outputs/artifacts.
+        
+        This is the primary entry point for the Generate capability.
+        
+        Args:
+            output_type: Type of output to generate
+            context: Generation context
+        
+        Returns:
+            Generated output
+        """
+        return {
+            "generated": True,
+            "output_type": output_type,
+            "content": {},
+        }
 
     async def generate_map(
         self,

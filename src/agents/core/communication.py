@@ -33,9 +33,10 @@ class MessageResult:
 class CommunicationModule:
     """Send/receive messages with intents, negotiation, and broadcast."""
 
-    def __init__(self, agent_id: UUID, mailbox: Any):
+    def __init__(self, agent_id: UUID | None = None, mailbox: Any | None = None):
+        from .messaging import Mailbox
         self.agent_id = agent_id
-        self.mailbox = mailbox
+        self.mailbox = mailbox if mailbox is not None else Mailbox(agent_id=agent_id)
 
     async def send_message(
         self,

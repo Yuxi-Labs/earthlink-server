@@ -103,6 +103,13 @@ class Decision:
     rationale: str  # Human-readable explanation
     alternatives_considered: int
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    
+    @property
+    def chosen_action(self):
+        """Backward compatibility: return action name."""
+        if isinstance(self.action, str):
+            return self.action
+        return self.action.name if hasattr(self.action, 'name') else str(self.action)
 
 
 class DecisionModule:
@@ -144,11 +151,15 @@ class DecisionModule:
     
     def decide(
         self,
-        available_actions: list[Action],
-        goals: list[Goal],
-        world_state: dict,
+        available_actions: list[Action] = None,
+        goals: list[Goal] = None,
+        world_state: dict = None,
         predictions: dict[str, Any] = None,
         reasoning_context: dict[str, Any] = None,
+        # Legacy parameter names for backward compatibility
+        actions: list[Action] = None,
+        hypotheses: list = None,
+        strategy: DecisionStrategy = None,
     ) -> Decision:
         """
         Select optimal action from available options.
@@ -163,6 +174,14 @@ class DecisionModule:
         Returns:
             Decision with selected action and rationale
         """
+        # Handle legacy parameter names
+        if actions is not None:
+            available_actions = actions
+        if hypotheses is not None and reasoning_context is None:
+            reasoning_context = {"hypotheses": hypotheses}
+        if strategy is not None:
+            self.strategy = strategy
+        
         if not available_actions:
             raise ValueError("No actions available for decision-making")
         
@@ -244,8 +263,14 @@ class DecisionModule:
         # 2. Expected reward from predictions
         expected_reward = 0.0
         if predictions and action.type in predictions:
-            pred_outcome = predictions[action.type].get("predicted_outcome", {})
-            expected_reward = pred_outcome.get("reward", 0.0)
+            pred = predictions[action.type]
+            # Handle both dict and Prediction objects
+            if isinstance(pred, dict):
+                pred_outcome = pred.get("predicted_outcome", {})
+                expected_reward = pred_outcome.get("reward", 0.0)
+            elif hasattr(pred, 'predicted_outcome'):
+                pred_outcome = pred.predicted_outcome
+                expected_reward = getattr(pred_outcome, 'reward', 0.0) if pred_outcome else 0.0
         
         # 3. Information gain (exploration bonus)
         information_gain = self._calculate_information_gain(action, world_state)
@@ -290,14 +315,25 @@ class DecisionModule:
         uncertainty = 0.5  # Default moderate uncertainty
         if predictions and action.type in predictions:
             pred = predictions[action.type]
-            uncertainty = 1.0 - pred.get("confidence", 0.5)
+            # Handle both dict and Prediction objects
+            if isinstance(pred, dict):
+                uncertainty = 1.0 - pred.get("confidence", 0.5)
+            elif hasattr(pred, 'confidence'):
+                uncertainty = 1.0 - pred.confidence
         risk_factors["uncertainty"] = uncertainty
         
         # 2. Potential loss (worst-case scenario)
         potential_loss = action.estimated_cost * 2  # Assume cost could double
         if predictions and action.type in predictions:
-            pred_outcome = predictions[action.type].get("predicted_outcome", {})
-            potential_loss = max(potential_loss, -pred_outcome.get("min_reward", 0))
+            pred = predictions[action.type]
+            # Handle both dict and Prediction objects
+            if isinstance(pred, dict):
+                pred_outcome = pred.get("predicted_outcome", {})
+                potential_loss = max(potential_loss, -pred_outcome.get("min_reward", 0))
+            elif hasattr(pred, 'predicted_outcome'):
+                pred_outcome = pred.predicted_outcome
+                min_reward = getattr(pred_outcome, 'min_reward', 0) if pred_outcome else 0
+                potential_loss = max(potential_loss, -min_reward)
         risk_factors["potential_loss"] = min(potential_loss / 10, 1.0)  # Normalize
         
         # 3. Constraint violations
