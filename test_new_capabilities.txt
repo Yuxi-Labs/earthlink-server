@@ -1,0 +1,60 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.3, pytest-9.0.2, pluggy-1.6.0 -- /home/wsawyerr/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /mnt/d/My_Work/research/yuxilabs/products/earthlink/server
+configfile: pyproject.toml
+plugins: asyncio-1.3.0, anyio-4.12.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 26 items
+
+tests/agents/core/test_act.py::test_agent_can_act PASSED                 [  3%]
+tests/agents/core/test_act.py::test_act_updates_agent_state PASSED       [  7%]
+tests/agents/core/test_act.py::test_act_handles_invalid_action PASSED    [ 11%]
+tests/agents/core/test_modeling.py::test_modeling_module_initialization PASSED [ 15%]
+tests/agents/core/test_modeling.py::test_build_world_model FAILED        [ 19%]
+tests/agents/core/test_modeling.py::test_world_model_learns_from_experience PASSED [ 23%]
+tests/agents/core/test_adaptation.py::test_adaptation_module_initialization PASSED [ 26%]
+tests/agents/core/test_adaptation.py::test_adapt_to_feedback PASSED      [ 30%]
+tests/agents/core/test_adaptation.py::test_adapt_improves_performance PASSED [ 34%]
+tests/agents/core/test_monitoring.py::test_monitoring_module_initialization PASSED [ 38%]
+tests/agents/core/test_monitoring.py::test_monitor_tracks_performance PASSED [ 42%]
+tests/agents/core/test_monitoring.py::test_monitor_detects_degradation PASSED [ 46%]
+tests/agents/core/test_monitoring.py::test_monitor_provides_diagnostics PASSED [ 50%]
+tests/agents/core/test_knowledge_transfer.py::test_transfer_module_initialization PASSED [ 53%]
+tests/agents/core/test_knowledge_transfer.py::test_transfer_knowledge_to_another_agent FAILED [ 57%]
+tests/agents/core/test_knowledge_transfer.py::test_transfer_preserves_knowledge_integrity PASSED [ 61%]
+tests/agents/core/test_evolution.py::test_evolution_module_initialization PASSED [ 65%]
+tests/agents/core/test_evolution.py::test_evolve_improves_capabilities FAILED [ 69%]
+tests/agents/core/test_evolution.py::test_evolve_based_on_success_patterns FAILED [ 73%]
+tests/agents/core/test_specialization.py::test_specialization_module_initialization PASSED [ 76%]
+tests/agents/core/test_specialization.py::test_specialize_in_domain FAILED [ 80%]
+tests/agents/core/test_specialization.py::test_specialization_increases_expertise PASSED [ 84%]
+tests/agents/core/test_generation.py::test_generation_module_initialization PASSED [ 88%]
+tests/agents/core/test_generation.py::test_generate_output_from_knowledge PASSED [ 92%]
+tests/agents/core/test_generation.py::test_generate_different_output_types FAILED [ 96%]
+tests/agents/core/test_generation.py::test_generate_creative_outputs FAILED [100%]
+
+=================================== FAILURES ===================================
+E   TypeError: argument of type 'WorldModel' is not iterable
+/mnt/d/My_Work/research/yuxilabs/products/earthlink/server/tests/agents/core/test_modeling.py:31: TypeError: argument of type 'WorldModel' is not iterable
+E   assert ('success' in {'effectiveness': 0.7, 'source': "{'topic': 'London geography', 'facts': ['Thames river', 'Big Ben location'], 'confidence': 0.8}", 'target': 'agent_002', 'transferred': True} or 'status' in {'effectiveness': 0.7, 'source': "{'topic': 'London geography', 'facts': ['Thames river', 'Big Ben location'], 'confidence': 0.8}", 'target': 'agent_002', 'transferred': True})
+/mnt/d/My_Work/research/yuxilabs/products/earthlink/server/tests/agents/core/test_knowledge_transfer.py:32: assert ('success' in {'effectiveness': 0.7, 'source': "{'topic': 'London geography', 'facts': ['Thames river', 'Big Ben location'], 'confidence': 0.8}", 'target': 'agent_002', 'transferred': True} or 'status' in {'effectiveness': 0.7, 'source': "{'topic': 'London geography', 'facts': ['Thames river', 'Big Ben location'], 'confidence': 0.8}", 'target': 'agent_002', 'transferred': True})
+E   AttributeError: 'list' object has no attribute 'get'
+/mnt/d/My_Work/research/yuxilabs/products/earthlink/server/src/agents/core/evolution.py:61: AttributeError: 'list' object has no attribute 'get'
+E   AttributeError: 'list' object has no attribute 'get'
+/mnt/d/My_Work/research/yuxilabs/products/earthlink/server/src/agents/core/evolution.py:61: AttributeError: 'list' object has no attribute 'get'
+E   AssertionError: assert ('specialization' in {'domain': 'urban_geography', 'expertise_level': 0.6, 'specialized': True} or 'expertise' in {'domain': 'urban_geography', 'expertise_level': 0.6, 'specialized': True} or 'status' in {'domain': 'urban_geography', 'expertise_level': 0.6, 'specialized': True})
+/mnt/d/My_Work/research/yuxilabs/products/earthlink/server/tests/agents/core/test_specialization.py:28: AssertionError: assert ('specialization' in {'domain': 'urban_geography', 'expertise_level': 0.6, 'specialized': True} or 'expertise' in {'domain': 'urban_geography', 'expertise_level': 0.6, 'specialized': True} or 'status' in {'domain': 'urban_geography', 'expertise_level': 0.6, 'specialized': True})
+E   TypeError: GenerationModule.generate() got multiple values for argument 'output_type'
+/mnt/d/My_Work/research/yuxilabs/products/earthlink/server/tests/agents/core/test_generation.py:37: TypeError: GenerationModule.generate() got multiple values for argument 'output_type'
+E   TypeError: GenerationModule.generate() got an unexpected keyword argument 'creativity'
+/mnt/d/My_Work/research/yuxilabs/products/earthlink/server/tests/agents/core/test_generation.py:49: TypeError: GenerationModule.generate() got an unexpected keyword argument 'creativity'
+=========================== short test summary info ============================
+FAILED tests/agents/core/test_modeling.py::test_build_world_model - TypeError...
+FAILED tests/agents/core/test_knowledge_transfer.py::test_transfer_knowledge_to_another_agent
+FAILED tests/agents/core/test_evolution.py::test_evolve_improves_capabilities
+FAILED tests/agents/core/test_evolution.py::test_evolve_based_on_success_patterns
+FAILED tests/agents/core/test_specialization.py::test_specialize_in_domain - ...
+FAILED tests/agents/core/test_generation.py::test_generate_different_output_types
+FAILED tests/agents/core/test_generation.py::test_generate_creative_outputs
+========================= 7 failed, 19 passed in 5.26s =========================

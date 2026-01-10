@@ -88,6 +88,32 @@ class EpisodicMemory:
             info=info,
         )
         self.push(transition)
+    
+    def add(
+        self,
+        state: dict | torch.Tensor,
+        action: dict | torch.Tensor,
+        reward: float,
+        next_state: dict | torch.Tensor,
+        done: bool,
+        goal: dict | torch.Tensor | None = None,
+        **info: Any,
+    ) -> None:
+        """
+        Add a transition to the replay buffer.
+        Convenience method that handles both dict and tensor inputs.
+        """
+        # Convert dicts to tensors if needed
+        if isinstance(state, dict):
+            state = torch.tensor(list(state.values()), dtype=torch.float32)
+        if isinstance(action, dict):
+            action = torch.tensor(list(action.values()), dtype=torch.float32)
+        if isinstance(next_state, dict):
+            next_state = torch.tensor(list(next_state.values()), dtype=torch.float32)
+        if isinstance(goal, dict):
+            goal = torch.tensor(list(goal.values()), dtype=torch.float32)
+        
+        self.push_transition(state, action, reward, next_state, done, goal, **info)
 
     def sample(self, batch_size: int) -> tuple[list[Transition], np.ndarray, np.ndarray]:
         """

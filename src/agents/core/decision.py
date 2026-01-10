@@ -106,10 +106,10 @@ class Decision:
     
     @property
     def chosen_action(self):
-        """Backward compatibility: return action name."""
+        """Backward compatibility: return action type."""
         if isinstance(self.action, str):
             return self.action
-        return self.action.name if hasattr(self.action, 'name') else str(self.action)
+        return self.action.type if hasattr(self.action, 'type') else str(self.action)
 
 
 class DecisionModule:
@@ -344,7 +344,10 @@ class DecisionModule:
         hypothesis_risk = 0.0
         if reasoning_context and "hypotheses" in reasoning_context:
             # Check if action contradicts confirmed hypotheses
-            for hyp in reasoning_context["hypotheses"].values():
+            hypotheses = reasoning_context["hypotheses"]
+            # Handle both dict and list of hypotheses
+            hyp_list = hypotheses.values() if isinstance(hypotheses, dict) else hypotheses
+            for hyp in hyp_list:
                 # hyp is a Hypothesis object
                 if (hyp.confirmed and 
                     action.type in hyp.description.lower()):

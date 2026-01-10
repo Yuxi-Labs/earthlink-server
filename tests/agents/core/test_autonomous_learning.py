@@ -19,12 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "server"))
 from src.agents.core.agent import Agent
 from src.agents.core.state import AgentState
 from src.agents.memory.episodic import EpisodicMemory
-from src.knowledge import (
-    get_wikipedia_source,
-    get_reddit_source,
-    get_twitter_source,
-    get_search_source,
-)
+from src.data.sources import WikipediaSource
 
 
 async def test_autonomous_exploration():
@@ -78,7 +73,7 @@ async def test_autonomous_exploration():
             print(f"  Knowledge gained: {knowledge_gained} items")
             
             # Show memory growth
-            memory_count = len(agent.memory._buffer)
+            memory_count = len(agent.memory.buffer)
             print(f"  Memory size: {memory_count} experiences")
             
         else:
@@ -99,14 +94,14 @@ async def test_autonomous_exploration():
     print("Summary:")
     print(f"  - Total topics explored: {agent.state.topics_explored}")
     print(f"  - Total knowledge queries: {agent.state.knowledge_sources_queried}")
-    print(f"  - Memory experiences: {len(agent.memory._buffer)}")
+    print(f"  - Memory experiences: {len(agent.memory.buffer)}")
     print(f"  - Agent is autonomously learning: ✓")
     print()
     
     # Show sample memories
-    if agent.memory._buffer:
+    if agent.memory.buffer:
         print("Sample memories:")
-        for i, exp in enumerate(agent.memory._buffer[:3]):
+        for i, exp in enumerate(agent.memory.buffer[:3]):
             print(f"  {i+1}. {exp}")
     
     return agent
@@ -122,34 +117,19 @@ async def test_knowledge_sources():
     
     # Wikipedia
     print("Testing Wikipedia...")
-    wiki = get_wikipedia_source()
+    wiki = WikipediaSource()
     results = await wiki.search("Python programming")
     print(f"  ✓ Wikipedia search returned {len(results)} results")
     
     if results:
-        article = await wiki.get_article(results[0])
-        print(f"  ✓ Retrieved article: {article.get('title', 'N/A')}")
+        article = await wiki.get_article(results[0]["title"])
+        print(f"  ✓ Retrieved article: {article.title}")
     
-    # Reddit
-    print("\nTesting Reddit...")
-    reddit = get_reddit_source()
-    posts = await reddit.search_posts("artificial intelligence", limit=3)
-    print(f"  ✓ Reddit search returned {len(posts)} posts")
-    
-    # Twitter
-    print("\nTesting Twitter...")
-    twitter = get_twitter_source()
-    tweets = await twitter.search_recent("machine learning", max_results=5)
-    print(f"  ✓ Twitter search returned {len(tweets)} tweets")
-    
-    # Search
-    print("\nTesting Web Search...")
-    search = get_search_source()
-    web_results = await search.query("reinforcement learning")
-    print(f"  ✓ Web search returned {len(web_results)} results")
+    # Note: Reddit, X (Twitter), and other sources are planned for future work
+    # See backend-backlog.md for implementation schedule
     
     print()
-    print("All knowledge sources operational: ✓")
+    print("Core knowledge sources operational: ✓")
     print()
 
 

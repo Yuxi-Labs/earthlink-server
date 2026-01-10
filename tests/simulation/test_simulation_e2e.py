@@ -1,20 +1,17 @@
 """End-to-end simulation tests with agent autonomous exploration."""
 
 import pytest
-import ray
 
 from src.agents.core.agent import Agent
 
 
-@pytest.mark.asyncio
-async def test_agent_autonomous_exploration_single_step():
+pytestmark = pytest.mark.asyncio
+
+
+async def test_agent_autonomous_exploration_single_step(ray_session):
     """Test agent autonomous exploration in a single step."""
-    if not ray.is_initialized():
-        ray.init(
-            ignore_reinit_error=True,
-            runtime_env={"env_vars": {"PYTHONPATH": "/app/src:/app"}}
-        )
-    
+    ray = ray_session
+
     # Create agent
     agent_ref = Agent.remote(name="Explorer1")
     await agent_ref.initialize_components.remote()
@@ -32,18 +29,14 @@ async def test_agent_autonomous_exploration_single_step():
     
     # Check agent state updated
     state = await agent_ref.get_state.remote()
-    assert state["metrics"]["total_steps"] >= 1
+    metrics = state.get("metrics", {})
+    assert metrics.get("total_steps", metrics.get("total_steps_executed", 0)) >= 1
 
 
-@pytest.mark.asyncio
-async def test_agent_autonomous_exploration_multiple_steps():
+async def test_agent_autonomous_exploration_multiple_steps(ray_session):
     """Test agent running multiple autonomous exploration steps."""
-    if not ray.is_initialized():
-        ray.init(
-            ignore_reinit_error=True,
-            runtime_env={"env_vars": {"PYTHONPATH": "/app/src:/app"}}
-        )
-    
+    ray = ray_session
+
     agent_ref = Agent.remote(name="Explorer2")
     await agent_ref.initialize_components.remote()
     await agent_ref.set_earthlink_position.remote(-33.8688, 151.2093, 10.0)
@@ -63,18 +56,14 @@ async def test_agent_autonomous_exploration_multiple_steps():
     
     # Check state
     state = await agent_ref.get_state.remote()
-    assert state["metrics"]["total_steps"] >= 5
+    metrics = state.get("metrics", {})
+    assert metrics.get("total_steps", metrics.get("total_steps_executed", 0)) >= 5
 
 
-@pytest.mark.asyncio
-async def test_agent_curiosity_driven_behavior():
+async def test_agent_curiosity_driven_behavior(ray_session):
     """Test agent's curiosity module drives exploration."""
-    if not ray.is_initialized():
-        ray.init(
-            ignore_reinit_error=True,
-            runtime_env={"env_vars": {"PYTHONPATH": "/app/src:/app"}}
-        )
-    
+    ray = ray_session
+
     agent_ref = Agent.remote(name="CuriousAgent")
     await agent_ref.initialize_components.remote()
     await agent_ref.set_earthlink_position.remote(-33.8688, 151.2093, 10.0)

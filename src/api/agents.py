@@ -354,3 +354,49 @@ async def execute_command(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Command execution failed: {str(e)}")
+
+
+@router.get("/{agent_id}/archetype")
+async def get_agent_archetype(
+    agent_id: UUID,
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """Get agent's exploration archetype based on their parameter configuration."""
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    
+    agent_ref = simulation._agents.get(agent_id)
+    if not agent_ref:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    try:
+        archetype_data = await agent_ref.get_exploration_archetype.remote()
+        return {
+            "agent_id": str(agent_id),
+            **archetype_data,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get archetype: {str(e)}")
+
+
+@router.get("/{agent_id}/coverage")
+async def get_agent_coverage(
+    agent_id: UUID,
+    simulation=Depends(get_simulation),
+) -> dict[str, Any]:
+    """Get agent's exploration coverage metrics."""
+    if simulation is None:
+        raise HTTPException(status_code=503, detail="Simulation not running")
+    
+    agent_ref = simulation._agents.get(agent_id)
+    if not agent_ref:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+    
+    try:
+        coverage_data = await agent_ref.assess_exploration_coverage.remote()
+        return {
+            "agent_id": str(agent_id),
+            **coverage_data,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get coverage: {str(e)}")

@@ -338,7 +338,7 @@ class SimulationRunner:
                     existing_agent.lifecycle = agent_state.get("lifecycle", "spawned")
                     existing_agent.status = agent_state.get("status", "idle")
                     existing_agent.config = agent_config
-                    existing_agent.updated_at = datetime.now(UTC)
+                    existing_agent.updated_at = datetime.now(UTC).replace(tzinfo=None)
                     print(f"Updated existing agent {name} (ID: {existing_agent.id}) in database")
                 else:
                     # Create new agent
@@ -372,6 +372,17 @@ class SimulationRunner:
         ))
 
         return agent_id
+
+    async def _maybe_spawn_agents(self):
+        """Maintain population up to target_agents for tests and runtime."""
+        target = self.config.target_agents
+        current = len(self._agents)
+        if target is None or target <= 0:
+            return
+
+        while current < target:
+            await self.spawn_agent(name=f"Agent_{self._agent_counter}")
+            current = len(self._agents)
 
     async def destroy_agent(self, agent_id: UUID) -> bool:
         """Destroy an agent."""
@@ -689,6 +700,11 @@ class SimulationRunner:
         Future: Will implement evolutionary spawning based on world conditions.
         """
         print(f"[POPULATION] Task started - target: {self.config.target_agents} agents")
+        
+        # If target is 0, exit immediately
+        if self.config.target_agents == 0:
+            print("[POPULATION] Target is 0, task exiting")
+            return
         
         # Wait for initialization to complete before checking population
         await asyncio.sleep(2)

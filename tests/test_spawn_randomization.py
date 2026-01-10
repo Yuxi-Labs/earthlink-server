@@ -12,7 +12,7 @@ from src.simulation.runner import SimulationRunner
 @pytest.fixture
 async def simulation():
     """Create a simulation runner for testing."""
-    from src.config import SimulationConfig
+    from src.simulation.config import SimulationConfig
     
     # Initialize Ray if not already running
     if not ray.is_initialized():

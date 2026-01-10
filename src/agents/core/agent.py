@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
@@ -305,6 +306,24 @@ class Agent:
     def get_id(self) -> UUID:
         """Return agent ID."""
         return self.state.id
+
+    # Convenience aliases expected by tests and API consumers
+    @property
+    def agent_id(self) -> UUID:
+        return self.state.id
+
+    @agent_id.setter
+    def agent_id(self, value: UUID) -> None:
+        self.state.id = value
+
+    @property
+    def name(self) -> str:
+        return self.state.name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        self.state.name = value
+        self.state.updated_at = datetime.now(UTC)
 
     def set_lifecycle(self, lifecycle: AgentLifecycle) -> None:
         """Transition agent lifecycle state."""
@@ -705,7 +724,7 @@ class Agent:
                 results["knowledge"] = knowledge
         
         # Update metrics
-        self.state.metrics.knowledge_sources_queried += 1
+        self.state.knowledge_sources_queried += 1
         
         return results
 
@@ -1304,18 +1323,19 @@ class Agent:
                 ))
 
         # Balance exploration and learning goals
-        # Both are equally important - agent should alternate between them
-        # Use exploration_signal to add slight variation, but keep them close
-        base_priority = 0.5
-        signal_influence = 0.15  # Reduced from 0.4 to keep goals balanced
-        random_noise = random.uniform(-0.05, 0.05)  # Small randomness for variety
+        # Learning should be slightly favored to build knowledge
+        # Use exploration_signal to vary priorities dynamically
+        base_explore = 0.4  # Lower baseline for movement
+        base_learn = 0.6    # Higher baseline for learning
+        signal_influence = 0.2  # Signal can shift priorities
+        random_noise = random.uniform(-0.05, 0.05)  # Small randomness
         
-        explore_priority = base_priority + exploration_signal * signal_influence + random_noise
-        learn_priority = base_priority + (1.0 - exploration_signal) * signal_influence - random_noise
+        explore_priority = base_explore + exploration_signal * signal_influence + random_noise
+        learn_priority = base_learn + (1.0 - exploration_signal) * signal_influence - random_noise
         
         # Clamp to valid range
-        explore_priority = max(0.3, min(0.7, explore_priority))
-        learn_priority = max(0.3, min(0.7, learn_priority))
+        explore_priority = max(0.2, min(0.6, explore_priority))
+        learn_priority = max(0.4, min(0.8, learn_priority))
         
         goals.append(Goal(
             id="explore_world",
@@ -1402,12 +1422,14 @@ class Agent:
             }
             
             loc = self.state.location
-            # Default to London if no position set (NOT Australia!)
+            # Default to London if no position set
             current_lat = loc.x if loc and loc.x != 0 else 51.5074
             current_lon = loc.y if loc and loc.y != 0 else -0.1278
             
-            # Move 1-50km in random direction
-            distance_km = random.uniform(1, 50)
+            # Real-world physics: walking speed ~5 km/h
+            # 1 step = 6 minutes of sim time, so max distance = 5 km/h × 0.1 hours = 0.5 km
+            # Agent can walk 0.3 to 0.5 km per step (300-500 meters)
+            distance_km = random.uniform(0.3, 0.5)  # 6 minutes of walking
             bearing = random.uniform(0, 360)
             new_lat, new_lon = self._calculate_destination(
                 current_lat, current_lon, distance_km, bearing
@@ -2583,6 +2605,11 @@ class Agent:
 
     def save_checkpoint(self, path: str) -> None:
         """Save agent state and networks to checkpoint."""
+        # Ensure checkpoint directory exists to avoid runtime errors inside Ray actors.
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+
         checkpoint = {
             "state": self.state.to_dict(),
             "config": self.config,
@@ -3052,6 +3079,216 @@ class Agent:
         )
         
         return degrees(lat2), degrees(lon2)
+    
+    # -------------------------------------------------------------------------
+    # Exploration-Specific Methods
+    # -------------------------------------------------------------------------
+    
+    def get_exploration_archetype(self) -> dict[str, Any]:
+        """
+        Detect agent's exploration archetype based on parameter combination.
+        
+        Returns archetype label and scores for each archetype.
+        """
+        # Extract exploration parameters
+        exploration_style = self.config.get("exploration_style", 0.5)
+        depth_vs_breadth = self.config.get("depth_vs_breadth", 0.5)
+        backtracking_tolerance = self.config.get("backtracking_tolerance", 0.3)
+        path_memory_strength = self.config.get("path_memory_strength", 0.75)
+        obstacle_persistence = self.config.get("obstacle_persistence", 0.5)
+        collaborative = self.config.get("collaborative_exploration", 0.4)
+        detail_orientation = self.config.get("detail_orientation", 0.6)
+        risk_tolerance = self.config.get("risk_tolerance", 0.5)
+        curiosity = self.config.get("curiosity", 0.6)
+        exploration_bonus = self.config.get("exploration_bonus", 0.1)
+        goal_flexibility = self.config.get("goal_flexibility", 0.5)
+        adaptation_speed = self.config.get("adaptation_speed", 0.6)
+        strategy_stickiness = self.config.get("strategy_stickiness", 0.4)
+        reasoning_depth = self.config.get("reasoning_depth", 3)
+        pattern_sensitivity = self.config.get("pattern_sensitivity", 0.6)
+        
+        # Calculate archetype scores (0-1, higher = better match)
+        archetypes = {}
+        
+        # Systematic Mapper: methodical, breadth-first, good memory
+        archetypes["Systematic Mapper"] = (
+            (1.0 - exploration_style) * 0.25 +  # Methodical
+            path_memory_strength * 0.25 +
+            detail_orientation * 0.2 +
+            (1.0 - depth_vs_breadth) * 0.2 +  # Breadth-first
+            (1.0 - backtracking_tolerance) * 0.1
+        )
+        
+        # Bold Pioneer: high risk, high curiosity, low memory
+        archetypes["Bold Pioneer"] = (
+            risk_tolerance * 0.25 +
+            curiosity * 0.25 +
+            exploration_bonus * 5.0 * 0.2 +  # Scale 0.05-0.2 to 0.25-1.0
+            goal_flexibility * 0.15 +
+            (1.0 - path_memory_strength) * 0.15
+        )
+        
+        # Thorough Investigator: depth-first, detail-oriented, persistent
+        archetypes["Thorough Investigator"] = (
+            depth_vs_breadth * 0.25 +
+            detail_orientation * 0.25 +
+            obstacle_persistence * 0.2 +
+            (reasoning_depth / 5.0) * 0.2 +  # Scale 2-5 to 0.4-1.0
+            (1.0 - goal_flexibility) * 0.1
+        )
+        
+        # Opportunistic Rover: spontaneous, flexible, breadth-first
+        archetypes["Opportunistic Rover"] = (
+            exploration_style * 0.25 +  # Spontaneous
+            goal_flexibility * 0.25 +
+            adaptation_speed * 0.2 +
+            (1.0 - depth_vs_breadth) * 0.15 +  # Breadth
+            (1.0 - strategy_stickiness) * 0.15
+        )
+        
+        # Team Scout: collaborative, balanced, adaptive
+        archetypes["Team Scout"] = (
+            collaborative * 0.35 +
+            adaptation_speed * 0.25 +
+            (self.config.get("perception_window", 12) / 20.0) * 0.2 +  # Scale 5-20 to 0.25-1.0
+            (1.0 - abs(depth_vs_breadth - 0.5)) * 2.0 * 0.2  # Balanced = closer to 0.5
+        )
+        
+        # Cautious Analyst: low risk, high reasoning, safe routes
+        archetypes["Cautious Analyst"] = (
+            (1.0 - risk_tolerance) * 0.25 +
+            (reasoning_depth / 5.0) * 0.25 +
+            pattern_sensitivity * 0.2 +
+            (1.0 - exploration_bonus * 5.0) * 0.15 +  # Low exploration bonus
+            (self.config.get("monitoring_window", 125) / 200.0) * 0.15
+        )
+        
+        # Persistent Pathfinder: persistent, low flexibility, committed
+        archetypes["Persistent Pathfinder"] = (
+            obstacle_persistence * 0.3 +
+            strategy_stickiness * 0.25 +
+            (1.0 - goal_flexibility) * 0.25 +
+            (1.0 - backtracking_tolerance) * 0.2
+        )
+        
+        # Find dominant archetype
+        dominant = max(archetypes.items(), key=lambda x: x[1])
+        
+        return {
+            "archetype": dominant[0],
+            "confidence": dominant[1],
+            "scores": archetypes,
+            "parameters": {
+                "exploration_style": exploration_style,
+                "depth_vs_breadth": depth_vs_breadth,
+                "risk_tolerance": risk_tolerance,
+                "curiosity": curiosity,
+                "collaborative": collaborative,
+            }
+        }
+    
+    def assess_exploration_coverage(self) -> dict[str, Any]:
+        """
+        Assess how well agent has covered their exploration area.
+        
+        Returns metrics about exploration effectiveness.
+        """
+        metrics = self.state.metrics
+        
+        # Basic coverage metrics
+        coverage = {
+            "unique_locations": metrics.unique_locations_visited,
+            "area_km2": metrics.exploration_area_km2,
+            "distance_traveled_km": metrics.distance_traveled_km,
+            "time_alive_hours": metrics.time_alive_hours,
+        }
+        
+        # Efficiency metrics
+        if metrics.time_alive_hours > 0:
+            coverage["locations_per_hour"] = metrics.unique_locations_visited / metrics.time_alive_hours
+            coverage["km_per_hour"] = metrics.distance_traveled_km / metrics.time_alive_hours
+        else:
+            coverage["locations_per_hour"] = 0.0
+            coverage["km_per_hour"] = 0.0
+        
+        # Coverage efficiency (area covered per distance traveled)
+        if metrics.distance_traveled_km > 0:
+            coverage["area_efficiency"] = metrics.exploration_area_km2 / metrics.distance_traveled_km
+        else:
+            coverage["area_efficiency"] = 0.0
+        
+        # Exploration entropy (movement randomness)
+        coverage["exploration_entropy"] = metrics.exploration_entropy
+        
+        # Knowledge gained per location
+        if metrics.unique_locations_visited > 0:
+            coverage["knowledge_per_location"] = metrics.knowledge_items_learned / metrics.unique_locations_visited
+        else:
+            coverage["knowledge_per_location"] = 0.0
+        
+        return coverage
+    
+    def choose_next_destination(
+        self,
+        candidate_destinations: list[tuple[float, float]],
+        current_lat: float,
+        current_lon: float,
+    ) -> tuple[float, float]:
+        """
+        Choose next destination based on agent's exploration strategy.
+        
+        Args:
+            candidate_destinations: List of (lat, lon) tuples
+            current_lat: Current latitude
+            current_lon: Current longitude
+            
+        Returns:
+            Chosen (lat, lon) destination
+        """
+        if not candidate_destinations:
+            # Fallback: random direction
+            import random
+            bearing = random.uniform(0, 360)
+            step_size = self.config.get("step_size_km", 1.0)
+            return self._destination_point(current_lat, current_lon, step_size, bearing)
+        
+        # Get exploration parameters
+        exploration_style = self.config.get("exploration_style", 0.5)
+        risk_tolerance = self.config.get("risk_tolerance", 0.5)
+        exploration_bonus = self.config.get("exploration_bonus", 0.1)
+        
+        # Score each candidate
+        scored_destinations = []
+        for dest_lat, dest_lon in candidate_destinations:
+            score = 0.0
+            
+            # Distance score (based on risk tolerance)
+            distance = self._haversine_distance(current_lat, current_lon, dest_lat, dest_lon)
+            # High risk = prefer distant destinations
+            # Low risk = prefer nearby destinations
+            if distance > 0:
+                distance_score = distance * risk_tolerance
+                score += distance_score * 0.4
+            
+            # Novelty score (has this area been visited?)
+            # TODO: Check against visited locations in memory
+            # For now, assume all are equally novel
+            novelty_score = 1.0 * exploration_bonus * 10.0  # Scale 0.05-0.2 to 0.5-2.0
+            score += novelty_score * 0.3
+            
+            # Randomness based on exploration style
+            # High exploration_style = more random
+            # Low exploration_style = more deterministic
+            import random
+            randomness = random.uniform(0, exploration_style)
+            score += randomness * 0.3
+            
+            scored_destinations.append((dest_lat, dest_lon, score))
+        
+        # Choose highest scoring destination
+        chosen = max(scored_destinations, key=lambda x: x[2])
+        return (chosen[0], chosen[1])
+    
     # -------------------------------------------------------------------------
     # Autonomous Behavior
     # -------------------------------------------------------------------------

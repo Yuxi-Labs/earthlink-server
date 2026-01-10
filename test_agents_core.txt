@@ -1,0 +1,241 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.3, pytest-9.0.2, pluggy-1.6.0 -- /home/wsawyerr/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /mnt/d/My_Work/research/yuxilabs/products/earthlink/server
+configfile: pyproject.toml
+plugins: asyncio-1.3.0, anyio-4.12.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 43 items
+
+tests/agents/core/test_agent.py::test_agent_initialization PASSED        [  2%]
+tests/agents/core/test_agent.py::test_agent_step PASSED                  [  4%]
+tests/agents/core/test_agent.py::test_agent_messaging PASSED             [  6%]
+tests/agents/core/test_agent.py::test_agent_state_serialization PASSED   [  9%]
+tests/agents/core/test_agent_knowledge.py::test_agent_explore_topic_returns_sources PASSED [ 11%]
+tests/agents/core/test_agent_knowledge.py::test_agent_query_methods_handles_errors PASSED [ 13%]
+tests/agents/core/test_agent_movement.py::test_agent_spawn_and_position PASSED [ 16%]
+tests/agents/core/test_agent_movement.py::test_agent_movement PASSED     [ 18%]
+tests/agents/core/test_agent_movement.py::test_agent_random_exploration PASSED [ 20%]
+tests/agents/core/test_agent_movement.py::test_agent_find_nearest_poi PASSED [ 23%]
+tests/agents/core/test_agent_movement.py::test_agent_navigation_to_poi PASSED [ 25%]
+tests/agents/core/test_agent_movement.py::test_agent_exploration_route PASSED [ 27%]
+tests/agents/core/test_archetypes.py::TestArchetypeDetection::test_systematic_mapper_agent PASSED [ 30%]
+tests/agents/core/test_archetypes.py::TestArchetypeDetection::test_bold_pioneer_agent PASSED [ 32%]
+tests/agents/core/test_archetypes.py::TestArchetypeDetection::test_archetype_has_all_scores PASSED [ 34%]
+tests/agents/core/test_archetypes.py::TestArchetypeDetection::test_archetype_returns_parameters PASSED [ 37%]
+tests/agents/core/test_archetypes.py::TestCoverageAssessment::test_coverage_calculation PASSED [ 39%]
+tests/agents/core/test_archetypes.py::TestCoverageAssessment::test_visited_locations_tracking PASSED [ 41%]
+tests/agents/core/test_archetypes.py::TestParameterVariation::test_specified_parameters_preserved PASSED [ 44%]
+tests/agents/core/test_archetypes.py::TestArchetypeAPI::test_list_archetypes_contains_labels PASSED [ 46%]
+tests/agents/core/test_archetypes.py::TestDestinationSelection::test_archetype_influences_destination_placeholder PASSED [ 48%]
+tests/agents/core/test_autonomous_learning.py::test_autonomous_exploration FAILED [ 51%]
+tests/agents/core/test_autonomous_learning.py::test_knowledge_sources PASSED [ 53%]
+tests/agents/core/test_autonomous_step.py::test_autonomous_step_completes_with_stub_decision PASSED [ 55%]
+tests/agents/core/test_cognitive_flow.py::TestCognitiveFlowIntegration::test_perceive_to_reason_flow PASSED [ 58%]
+tests/agents/core/test_cognitive_flow.py::TestCognitiveFlowIntegration::test_reason_to_decide_flow PASSED [ 60%]
+tests/agents/core/test_cognitive_flow.py::TestCognitiveFlowIntegration::test_decision_strategy_consistency PASSED [ 62%]
+tests/agents/core/test_explore_live.py::test_agent_knowledge_methods PASSED [ 65%]
+tests/agents/core/test_integration.py::test_agent_can_query_sources PASSED [ 67%]
+tests/agents/core/test_messaging.py::test_message_creation PASSED        [ 69%]
+tests/agents/core/test_messaging.py::test_mailbox PASSED                 [ 72%]
+tests/agents/core/test_messaging.py::test_mailbox_mark_read PASSED       [ 74%]
+tests/agents/core/test_messaging.py::test_message_router PASSED          [ 76%]
+tests/agents/core/test_messaging.py::test_broadcast_message PASSED       [ 79%]
+tests/agents/core/test_reasoning.py::TestHypothesis::test_hypothesis_creation PASSED [ 81%]
+tests/agents/core/test_reasoning.py::TestHypothesis::test_update_confidence_with_supporting_evidence PASSED [ 83%]
+tests/agents/core/test_reasoning.py::TestHypothesis::test_update_confidence_with_contradicting_evidence PASSED [ 86%]
+tests/agents/core/test_reasoning.py::TestPrediction::test_prediction_creation PASSED [ 88%]
+tests/agents/core/test_reasoning.py::TestCausalRelation::test_causal_relation_creation PASSED [ 90%]
+tests/agents/core/test_reasoning.py::TestReasoningEngine::test_engine_initialization PASSED [ 93%]
+tests/agents/core/test_reasoning.py::TestReasoningEngine::test_generate_hypothesis_from_observations PASSED [ 95%]
+tests/agents/core/test_reasoning.py::TestReasoningEngine::test_predict_simple_persistence PASSED [ 97%]
+tests/agents/core/test_reasoning.py::TestReasoningEngine::test_statistics_tracking PASSED [100%]
+
+=================================== FAILURES ===================================
+_________________________ test_autonomous_exploration __________________________
+tests/agents/core/test_autonomous_learning.py:102: in test_autonomous_exploration
+    if agent.memory._buffer:
+       ^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'EpisodicMemory' object has no attribute '_buffer'. Did you mean: 'buffer'?
+----------------------------- Captured stdout call -----------------------------
+================================================================================
+EARTHLINK AUTONOMOUS LEARNING TEST
+================================================================================
+
+✓ Created agent: A1 (test_explorer_001)
+
+Starting autonomous exploration...
+--------------------------------------------------------------------------------
+
+Step 1/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.54)
+[MOVE] Agent A1 moved 8.2km to (51.4723, -0.0242)
+  Action: {'type': 'move', 'from': (51.5074, -0.1278), 'to': (51.47229605344919, -0.024179904648548245), 'distance_km': 8.167369759605254, 'bearing': 118.50934029651832, 'position': (51.47229605344919, -0.024179904648548245, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 2/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.52)
+[MOVE] Agent A1 moved 13.6km to (51.3596, -0.1005)
+  Action: {'type': 'move', 'from': (51.47229605344919, -0.024179904648548245), 'to': (51.35957797053611, -0.10047407738215952), 'distance_km': 13.604638456413873, 'bearing': 202.91593868224442, 'position': (51.35957797053611, -0.10047407738215952, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 3/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.54)
+[MOVE] Agent A1 moved 13.9km to (51.4120, 0.0821)
+  Action: {'type': 'move', 'from': (51.35957797053611, -0.10047407738215952), 'to': (51.4120021346745, 0.08213427131863682), 'distance_km': 13.948380291934708, 'bearing': 65.22537641690386, 'position': (51.4120021346745, 0.08213427131863682, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 4/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.51)
+[MOVE] Agent A1 moved 43.8km to (51.1005, -0.3035)
+  Action: {'type': 'move', 'from': (51.4120021346745, 0.08213427131863682), 'to': (51.100461417507546, -0.3035165318028419), 'distance_km': 43.82109999606331, 'bearing': 217.91600496865897, 'position': (51.100461417507546, -0.3035165318028419, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 5/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.51)
+[MOVE] Agent A1 moved 19.8km to (51.0238, -0.5598)
+  Action: {'type': 'move', 'from': (51.100461417507546, -0.3035165318028419), 'to': (51.02378147417387, -0.5598295643598874), 'distance_km': 19.837864420843253, 'bearing': 244.6445339129744, 'position': (51.02378147417387, -0.5598295643598874, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 6/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose learn: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.51)
+[Agent test_explorer_001] Failed to get location context for topic generation: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+[Agent test_explorer_001] Using fallback generic topic (location query failed)
+[Agent test_explorer_001] Knowledge source 'ollama' failed: Client error '404 Not Found' for url 'http://localhost:11434/api/generate'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+  Action: Explored 'wildlife migration' via unknown
+  Knowledge gained: 5 items
+  Memory size: 0 experiences
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 7/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk (confidence: 0.56)
+[MOVE] Agent A1 moved 44.9km to (50.9717, -1.1955)
+  Action: {'type': 'move', 'from': (51.02378147417387, -0.5598295643598874), 'to': (50.97167866490749, -1.1954867805505103), 'distance_km': 44.859256608167904, 'bearing': 262.8266214938504, 'position': (50.97167866490749, -1.1954867805505103, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 8/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose learn: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.52)
+[Agent test_explorer_001] Failed to get location context for topic generation: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+[Agent test_explorer_001] Using fallback generic topic (location query failed)
+[Agent test_explorer_001] Knowledge source 'ollama' failed: Client error '404 Not Found' for url 'http://localhost:11434/api/generate'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+  Action: Explored 'human geography' via unknown
+  Knowledge gained: 9 items
+  Memory size: 0 experiences
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 9/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.54)
+[MOVE] Agent A1 moved 8.6km to (51.0480, -1.1739)
+  Action: {'type': 'move', 'from': (50.97167866490749, -1.1954867805505103), 'to': (51.047969506047465, -1.1739400469325005), 'distance_km': 8.616051790871667, 'bearing': 10.06793809852914, 'position': (51.047969506047465, -1.1739400469325005, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+Step 10/10:
+----------------------------------------
+[PREDICT] Agent A1 predicted move: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted learn: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[PREDICT] Agent A1 predicted policy: {'state_change': 'minimal', 'method': 'persistence_assumption'} (confidence: 0.40)
+[DECIDE] Agent A1 chose move: Best available option; Low risk; Marginal advantage over alternatives (confidence: 0.53)
+[MOVE] Agent A1 moved 16.5km to (50.9699, -1.3750)
+  Action: {'type': 'move', 'from': (51.047969506047465, -1.1739400469325005), 'to': (50.96994328513737, -1.3750342192073788), 'distance_km': 16.529364639212616, 'bearing': 238.41727013314406, 'position': (50.96994328513737, -1.3750342192073788, 0.0)}
+  Metrics:
+    - Topics explored: 0
+    - Knowledge queries: 0
+    - Prediction errors: 0
+    - Novelty encountered: 0
+
+================================================================================
+TEST COMPLETE
+================================================================================
+
+Summary:
+  - Total topics explored: 0
+  - Total knowledge queries: 0
+  - Memory experiences: 0
+  - Agent is autonomously learning: ✓
+
+------------------------------ Captured log call -------------------------------
+WARNING  root:agent.py:2693 Failed to log knowledge acquisition for agent test_explorer_001: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+WARNING  root:agent.py:2693 Failed to log knowledge acquisition for agent test_explorer_001: [Errno 111] Connect call failed ('127.0.0.1', 5432)
+=============================== warnings summary ===============================
+tests/agents/core/test_agent_movement.py::test_agent_spawn_and_position
+  /home/wsawyerr/.venv/lib/python3.13/site-packages/ray/_private/worker.py:2046: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/agents/core/test_autonomous_learning.py::test_autonomous_exploration
+=================== 1 failed, 42 passed, 1 warning in 49.45s ===================

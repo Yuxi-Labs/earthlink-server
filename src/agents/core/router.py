@@ -64,12 +64,14 @@ class MessageRouter:
         agent_id: UUID,
         actor_ref: ray.ObjectRef | None = None,
         groups: list[str] | None = None,
+        mailbox: Mailbox | None = None,
     ) -> None:
         """Register an agent with the router."""
         handle = AgentHandle(
             agent_id=agent_id,
             actor_ref=actor_ref,
             groups=set(groups or []),
+            mailbox=mailbox or Mailbox(agent_id=agent_id),
         )
         self.agents[agent_id] = handle
 

@@ -22,6 +22,10 @@ class SimulationConfig:
     steps_per_second: float = 10.0
     max_steps: int | None = None
     speed_multiplier: float = 1.0  # 0.1 = slow, 1.0 = normal, 10.0 = fast
+    
+    # Simulation time advancement
+    minutes_per_step: float = 6.0  # Each step = 6 minutes of simulation time
+    # Real-world physics: walking speed ~5 km/h, so 6 minutes = 0.5 km max movement
 
     # Agents
     max_agents: int = 100

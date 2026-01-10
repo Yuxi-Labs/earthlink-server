@@ -1,25 +1,16 @@
 """Autonomous spawning integration test."""
 
-import asyncio
-import importlib.util
-import sys
-
 import pytest
 
-try:
-    from src.simulation import SimulationRunner, SimulationConfig
-    _ray_present = importlib.util.find_spec("ray") is not None
-except ImportError:
-    SimulationRunner = None
-    SimulationConfig = None
-    _ray_present = False
+pytest.importorskip("ray")
 
-RAY_AVAILABLE = _ray_present and sys.version_info < (3, 13) and SimulationRunner is not None
+from src.simulation import SimulationRunner, SimulationConfig
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(not RAY_AVAILABLE, reason="Ray not available for current interpreter")
-async def test_spawn_manager_reaches_target_population(monkeypatch):
+pytestmark = pytest.mark.asyncio
+
+
+async def test_spawn_manager_reaches_target_population(monkeypatch, ray_session):
     """Spawn manager should auto-create agents up to target population."""
 
     # Avoid DB access during test
@@ -52,9 +43,7 @@ async def test_spawn_manager_reaches_target_population(monkeypatch):
     await runner.shutdown()
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(not RAY_AVAILABLE, reason="Ray not available for current interpreter")
-async def test_earth_created_on_init(monkeypatch):
+async def test_earth_created_on_init(monkeypatch, ray_session):
     """Simulation should create and load Earth on initialization."""
 
     async def _noop_load_persisted(self):

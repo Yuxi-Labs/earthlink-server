@@ -27,6 +27,11 @@ class EventType(Enum):
     AGENT_LEARNED = auto()
     AGENT_GOAL_ACHIEVED = auto()
     AGENT_GOAL_FAILED = auto()
+    
+    # Messaging events
+    MESSAGE_SENT = auto()
+    MESSAGE_RECEIVED = auto()
+    MESSAGE_BROADCAST = auto()
 
     # World events
     WORLD_LOADED = auto()

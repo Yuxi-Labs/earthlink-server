@@ -60,8 +60,7 @@ def mock_environment():
 class TestPerceptionToReasoning:
     """Test perception → reasoning integration."""
     
-    @pytest.mark.asyncio
-    async def test_basic_perception_flow(self, perception_module, mock_environment):
+    def test_basic_perception_flow(self, perception_module, mock_environment):
         """Test basic perception with attention focus."""
         focus = AttentionFocus(
             modalities=[PerceptionModality.SPATIAL, PerceptionModality.KNOWLEDGE],
@@ -69,7 +68,7 @@ class TestPerceptionToReasoning:
             priority=0.8,
         )
         
-        observations = await perception_module.perceive(mock_environment, focus)
+        observations = perception_module.perceive(mock_environment, focus)
         
         assert observations is not None
         assert len(observations) > 0
@@ -78,8 +77,7 @@ class TestPerceptionToReasoning:
         assert PerceptionModality.SPATIAL in modalities
         assert PerceptionModality.KNOWLEDGE in modalities
     
-    @pytest.mark.asyncio
-    async def test_perception_feeds_reasoning(self, perception_module, reasoning_engine, mock_environment):
+    def test_perception_feeds_reasoning(self, perception_module, reasoning_engine, mock_environment):
         """Test that perception output can be used for reasoning."""
         focus = AttentionFocus(
             modalities=[PerceptionModality.SPATIAL, PerceptionModality.SOCIAL],
@@ -87,7 +85,7 @@ class TestPerceptionToReasoning:
             priority=0.7,
         )
         
-        observations = await perception_module.perceive(mock_environment, focus)
+        observations = perception_module.perceive(mock_environment, focus)
         
         # Convert to dict format expected by reasoning
         obs_dicts = [
@@ -143,8 +141,7 @@ class TestReasoningToDecision:
 class TestFullCognitiveLoop:
     """Test complete PERCEIVE → REASON → DECIDE cycle."""
     
-    @pytest.mark.asyncio
-    async def test_complete_cycle(
+    def test_complete_cycle(
         self, perception_module, reasoning_engine, decision_module, mock_environment
     ):
         """Test full cognitive cycle end-to-end."""
@@ -155,7 +152,7 @@ class TestFullCognitiveLoop:
             priority=0.8,
         )
         
-        perception_results = await perception_module.perceive(mock_environment, focus)
+        perception_results = perception_module.perceive(mock_environment, focus)
         assert len(perception_results) > 0
         
         # Step 2: REASON - Convert perception to observations and generate hypothesis

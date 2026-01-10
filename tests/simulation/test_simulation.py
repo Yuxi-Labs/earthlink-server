@@ -1,25 +1,16 @@
 """Tests for simulation runner."""
 
-import importlib.util
-import sys
-
 import pytest
 
-try:
-    from src.simulation import SimulationRunner, SimulationConfig, SimulationState
-    _ray_present = importlib.util.find_spec("ray") is not None
-except ImportError:
-    SimulationRunner = None
-    SimulationConfig = None
-    SimulationState = None
-    _ray_present = False
+pytest.importorskip("ray")
 
-RAY_AVAILABLE = _ray_present and sys.version_info < (3, 13) and SimulationRunner is not None
+from src.simulation import SimulationRunner, SimulationConfig, SimulationState
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(not RAY_AVAILABLE, reason="Ray not available for current interpreter")
-async def test_simulation_initialization(monkeypatch):
+pytestmark = pytest.mark.asyncio
+
+
+async def test_simulation_initialization(monkeypatch, ray_session):
     """Test simulation runner initialization."""
     async def _noop_load_persisted(self):
         return None
@@ -44,9 +35,7 @@ async def test_simulation_initialization(monkeypatch):
     await runner.shutdown()
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(not RAY_AVAILABLE, reason="Ray not available for current interpreter")
-async def test_simulation_stats(monkeypatch):
+async def test_simulation_stats(monkeypatch, ray_session):
     """Test simulation statistics."""
     async def _noop_load_persisted(self):
         return None
@@ -69,9 +58,7 @@ async def test_simulation_stats(monkeypatch):
     await runner.shutdown()
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(not RAY_AVAILABLE, reason="Ray not available for current interpreter")
-async def test_world_is_earth(monkeypatch):
+async def test_world_is_earth(monkeypatch, ray_session):
     """Test that the simulation's world is Earth."""
     async def _noop_load_persisted(self):
         return None

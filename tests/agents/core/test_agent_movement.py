@@ -78,7 +78,7 @@ async def test_agent_random_exploration():
     # Explore randomly 3 times
     positions = []
     for i in range(3):
-        result = await agent_ref.explore_random_location.remote(max_distance_km=10.0)
+        result = await agent_ref.explore_random_location.remote()
         lat = await agent_ref.get_latitude.remote()
         lon = await agent_ref.get_longitude.remote()
         positions.append((lat, lon))
@@ -101,10 +101,10 @@ async def test_agent_find_nearest_poi():
     await agent_ref.set_earthlink_position.remote(-33.8688, 151.2093)
     
     # Find nearest cafe (or any amenity)
-    result = await agent_ref.find_nearest.remote(poi_type="cafe", max_distance_km=1.0)
+    result = await agent_ref.find_nearest.remote("poi", max_distance_km=1.0)
     
-    if result and "poi" in result:
-        print(f"✓ Found nearest POI: {result['poi'].get('name', 'Unknown')}")
+    if result:
+        print(f"✓ Found nearest POI(s): {len(result)} results")
     else:
         print("✓ No POI found in range (expected in test environment)")
 
@@ -121,7 +121,7 @@ async def test_agent_navigation_to_poi():
     await agent_ref.set_earthlink_position.remote(-33.8688, 151.2093)
     
     # Try to navigate to a restaurant
-    result = await agent_ref.navigate_to_poi.remote(poi_type="restaurant")
+    result = await agent_ref.navigate_to_poi.remote(poi_name="Restaurant")
     
     # Get final position
     lat = await agent_ref.get_latitude.remote()
@@ -143,7 +143,7 @@ async def test_agent_exploration_route():
     await agent_ref.set_earthlink_position.remote(-33.8688, 151.2093)
     
     # Plan route with 3 waypoints
-    route = await agent_ref.plan_exploration_route.remote(num_waypoints=3, max_distance_km=5.0)
+    route = await agent_ref.plan_exploration_route.remote(num_waypoints=3)
     
     if route and "waypoints" in route:
         print(f"✓ Planned route with {len(route['waypoints'])} waypoints:")

@@ -80,8 +80,8 @@ def test_message_router():
     agent_id = uuid4()
     mailbox = Mailbox(agent_id=agent_id)
     
-    # Register agent
-    router.register_agent(agent_id, mailbox)
+    # Register agent with mailbox
+    router.register_agent(agent_id, mailbox=mailbox)
     
     # Route message
     msg = Message(
@@ -91,7 +91,7 @@ def test_message_router():
         content="Hello via router",
     )
     
-    router.route(msg)
+    router.send(msg)
     
     # Should be in mailbox
     assert len(mailbox.inbox) == 1
@@ -108,7 +108,7 @@ def test_broadcast_message():
     for _ in range(3):
         agent_id = uuid4()
         mailbox = Mailbox(agent_id=agent_id)
-        router.register_agent(agent_id, mailbox)
+        router.register_agent(agent_id, mailbox=mailbox)
         mailboxes.append(mailbox)
     
     # Broadcast
